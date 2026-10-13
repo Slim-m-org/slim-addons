@@ -114,6 +114,12 @@
       "name": "Poll",
       "version": "0.1.2",
       "summary": "Run a live poll in the channel, one vote per person, and watch the bars fill in."
+    },
+    {
+      "id": "tabletop",
+      "name": "Tabletop Kit",
+      "version": "0.1.0",
+      "summary": "Dice with advantage, an initiative tracker and short character sheets for tabletop games."
     }
   ]
 }

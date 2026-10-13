@@ -31,7 +31,7 @@ contract, limits, and publishing - is in slim-m's
 ## Running a module before you install it
 
 `tools/run-module` drives a module exactly the way slim does - same ABI, same
-wasmi version, and the same refusal of a module that imports anything - so you
+wasmi version, and the same refusal of a module that imports anything but `slim.host_call` - so you
 can see what yours actually emits without installing it into a space.
 
 ```bash
@@ -50,6 +50,8 @@ A module that needs to know who is acting gets a caller with `--caller <id>`:
 ```bash
 $R --caller alice modules/tic-tac-toe/0.2.0/module.wasm play ''
 ```
+
+A module that uses `kv.store` can run here too: the runner answers `slim.host_call` with an in-memory store that enforces slim's bounds, and `--kv-file <path>` keeps it between runs.
 
 `--fuel <n>` meters the run and fails it with `out of fuel` when the budget is spent, the way slim refuses a module over its limit.
 The scripts below pass the manifest's `runtime.limits.fuel` and a timeout built from `wall_ms`.
