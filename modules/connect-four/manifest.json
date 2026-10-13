@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "connect-four",
   "name": "Connect Four",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "summary": "Drop discs and get four in a row.",
   "description": "Launch a Connect Four board from the apps menu (or type /connect-four) and play it in the channel. The first person to drop a disc is Red, the next different person is Yellow, and drops out of turn are refused. Everyone else watches. Each message is its own game, and 'new game' restarts it. The board and the two players' opaque module ids are kept in the message itself; the module stores nothing and learns nothing else about you.",
   "author": "slim-m",
@@ -17,8 +17,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/connect-four/0.3.0/module.wasm",
-    "sha256": "85810b945d88f9b1b391a5ffee86ecbe0855cb9ed8a166c90736d65b118889a0"
+    "path": "modules/connect-four/0.3.1/module.wasm",
+    "sha256": "a08ff0e3a001752eaa16c3910c0f073dc5a528640f403bd9388f9a4ab54a0020"
   },
   "permissions": [
     {

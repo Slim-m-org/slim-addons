@@ -46,7 +46,7 @@
     {
       "id": "tic-tac-toe",
       "name": "Tic-tac-toe",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "summary": "Play tic-tac-toe in the channel."
     },
     {
@@ -58,7 +58,7 @@
     {
       "id": "connect-four",
       "name": "Connect Four",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "summary": "Drop discs and get four in a row."
     },
     {
@@ -82,7 +82,7 @@
     {
       "id": "music-box",
       "name": "Music Box",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Write a short tune on a step grid, together, in the channel."
     },
     {
@@ -106,7 +106,7 @@
     {
       "id": "palette",
       "name": "Palette",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Draw a colour palette from one hex colour, and tap to explore."
     },
     {

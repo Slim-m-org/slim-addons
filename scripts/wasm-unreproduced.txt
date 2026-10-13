@@ -1,5 +1,1 @@
 # Modules whose pinned wasm predates scripts/build-wasm.sh. Remove a line when its module is rebuilt; never add one.
-connect-four
-music-box
-palette
-tic-tac-toe

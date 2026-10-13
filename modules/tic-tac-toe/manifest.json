@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "tic-tac-toe",
   "name": "Tic-tac-toe",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "summary": "Play tic-tac-toe in the channel.",
   "description": "Launch a tic-tac-toe board from the apps menu (or type /tic-tac-toe) and play it in the channel. The first person to move is X, the next different person is O, and moves out of turn are refused. Everyone else watches. Each message is its own game, and 'new game' restarts it. The board and the two players' opaque module ids are kept in the message itself; the module stores nothing and learns nothing else about you.",
   "author": "slim-m",
@@ -17,8 +17,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/tic-tac-toe/0.2.0/module.wasm",
-    "sha256": "1ba4dc2a03ea50576144a28dc9bef09d6f1922c111e2649493ae60dfcd7458e3"
+    "path": "modules/tic-tac-toe/0.2.1/module.wasm",
+    "sha256": "f078530210b228523ffed6413a7d090cb290e776f8eeeb7c3c67ba16034bf5b1"
   },
   "permissions": [
     {
