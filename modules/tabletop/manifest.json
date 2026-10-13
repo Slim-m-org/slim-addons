@@ -18,7 +18,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/tabletop/0.1.0/module.wasm",
-    "sha256": "783e627d3fe5dea9e948b39fa0ada39e2a7639dc4e4be7bc7730460c4730b89a"
+    "sha256": "898e2ffe2e46e4a24dd75a7247bcb2e27364680e71360b8ac58c7478ce7f5271"
   },
   "permissions": [
     {

@@ -21,6 +21,10 @@ extern "C" {
 fn call(request: &serde_json::Value) -> Result<serde_json::Value, String> {
     let bytes = serde_json::to_vec(request).map_err(|_| "could not build the store request".to_string())?;
     let packed = unsafe { host_call(bytes.as_ptr() as i32, bytes.len() as i32) };
+    // slim answers 0 when the run is past its deadline or the reply could not be written.
+    if packed == 0 {
+        return Err("the store did not answer in time".to_string());
+    }
     let (ptr, len) = ((packed >> 32) as u32 as usize, (packed & 0xffff_ffff) as usize);
     let reply = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
     let reply: serde_json::Value = serde_json::from_slice(reply).map_err(|_| "the store answered nonsense".to_string())?;
