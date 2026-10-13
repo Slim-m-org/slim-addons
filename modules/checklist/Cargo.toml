@@ -1,0 +1,25 @@
+# The shared checklist module.
+[package]
+name = "checklist"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# serde is all a pure-compute module needs. Add your own crates freely - just
+# keep the build import-free at the wasm boundary (no wasm-bindgen, no wasi):
+# slim refuses a module that imports anything from the host.
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+
+# Small, and no unwinding across the wasm boundary.
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1
