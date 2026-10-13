@@ -9,9 +9,12 @@
 //!
 //! - the module exports `memory`, `alloc(len) -> ptr` and
 //!   `run(in_ptr, in_len) -> packed(out_ptr << 32 | out_len)`
-//! - the module imports nothing, and this refuses one that does, exactly as
-//!   slim refuses it - catching an accidental wasi or wasm-bindgen dependency
-//!   here rather than at install time
+//! - the module imports nothing, or exactly `slim.host_call`; this refuses
+//!   anything else, as slim does - catching an accidental wasi or wasm-bindgen
+//!   dependency here rather than at install time
+//!
+//! `host_call` serves `kv.store` only (see `host.rs`), always approved and in
+//! memory; `--kv-file <path>` keeps the store in that file between runs.
 //!
 //! `--caller` puts `{"caller":{"id":...}}` in the request, which is how a
 //! seat-based module learns who is acting. `--fuel` meters the run and fails it
@@ -22,9 +25,13 @@
 //! `runtime.limits` is the authority on those, and the scripts that drive this
 //! tool put a timeout around each run.
 
+mod host;
+
 use std::process::ExitCode;
 
 use wasmi::{Config, Engine, Extern, Instance, Linker, Memory, Module, Store};
+
+use host::Host;
 
 struct Options {
     path: String,
@@ -32,12 +39,14 @@ struct Options {
     input: String,
     caller: Option<String>,
     fuel: Option<u64>,
+    kv_file: Option<String>,
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut positional = Vec::new();
     let mut caller = None;
     let mut fuel = None;
+    let mut kv_file = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -46,19 +55,25 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 let n = iter.next().ok_or("--fuel needs a number")?;
                 fuel = Some(n.parse::<u64>().map_err(|_| format!("--fuel: {n} is not a number"))?);
             }
+            "--kv-file" => kv_file = Some(iter.next().ok_or("--kv-file needs a path")?.clone()),
             _ => positional.push(arg.clone()),
         }
     }
     match positional.as_slice() {
-        [path, command] => Ok(Options::new(path, command, "", caller, fuel)),
-        [path, command, input] => Ok(Options::new(path, command, input, caller, fuel)),
-        _ => Err("usage: run-module [--caller <id>] [--fuel <n>] <module.wasm> <command> [input]".to_owned()),
+        [path, command] => Ok(Options::new(path, command, "", caller, fuel).with_kv_file(kv_file)),
+        [path, command, input] => Ok(Options::new(path, command, input, caller, fuel).with_kv_file(kv_file)),
+        _ => Err("usage: run-module [--caller <id>] [--fuel <n>] [--kv-file <path>] <module.wasm> <command> [input]".to_owned()),
     }
 }
 
 impl Options {
     fn new(path: &str, command: &str, input: &str, caller: Option<String>, fuel: Option<u64>) -> Self {
-        Options { path: path.into(), command: command.into(), input: input.into(), caller, fuel }
+        Options { path: path.into(), command: command.into(), input: input.into(), caller, fuel, kv_file: None }
+    }
+
+    fn with_kv_file(mut self, kv_file: Option<String>) -> Self {
+        self.kv_file = kv_file;
+        self
     }
 }
 
@@ -96,30 +111,38 @@ fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
     let engine = Engine::new(&config);
     let module = Module::new(&engine, bytes).map_err(|e| format!("not valid wasm: {e}"))?;
 
-    // The import-free rule, enforced the way slim enforces it: an empty linker
-    // means instantiation fails if the module wants anything from the host.
-    if module.imports().count() != 0 {
-        let wanted: Vec<String> = module
-            .imports()
-            .map(|i| format!("{}::{}", i.module(), i.name()))
-            .collect();
+    // A module may import nothing, or exactly slim.host_call and nothing else.
+    let wanted: Vec<String> = module
+        .imports()
+        .map(|i| format!("{}::{}", i.module(), i.name()))
+        .filter(|name| name != "slim::host_call")
+        .collect();
+    if !wanted.is_empty() {
         return Err(format!(
-            "module imports {}, but slim only instantiates import-free modules",
+            "module imports {}, but slim only instantiates modules that import nothing or just slim.host_call",
             wanted.join(", ")
         ));
     }
 
-    let mut store = Store::new(&engine, ());
+    let mut store = Store::new(&engine, Host::default());
+    if let Some(path) = &options.kv_file {
+        store.data_mut().kv = host::load(&std::fs::read_to_string(path).unwrap_or_default());
+    }
     if let Some(fuel) = options.fuel {
         store.set_fuel(fuel).map_err(|e| format!("cannot meter the run: {e}"))?;
     }
-    let linker = Linker::<()>::new(&engine);
+    let mut linker = Linker::<Host>::new(&engine);
+    host::link(&mut linker)?;
     let instance = linker
         .instantiate_and_start(&mut store, &module)
         .map_err(|e| format!("cannot instantiate: {e}"))?;
 
     let request = serde_request(&options.command, &options.input, options.caller.as_deref());
-    call_run(&mut store, &instance, request.as_bytes())
+    let reply = call_run(&mut store, &instance, request.as_bytes());
+    if let Some(path) = &options.kv_file {
+        std::fs::write(path, host::dump(&store.data().kv)).map_err(|e| format!("cannot write {path}: {e}"))?;
+    }
+    reply
 }
 
 /// The request shape slim sends: `{"command":..., "input":..., "caller":{"id":...}, "entropy":...}`.
@@ -159,7 +182,7 @@ fn escape(value: &str) -> String {
 }
 
 fn call_run(
-    store: &mut Store<()>,
+    store: &mut Store<Host>,
     instance: &Instance,
     request: &[u8],
 ) -> Result<String, String> {
@@ -199,7 +222,7 @@ fn call_run(
 /// a refusal rather than this tool trying to allocate it.
 fn read_guest(
     memory: &Memory,
-    store: &Store<()>,
+    store: &Store<Host>,
     ptr: usize,
     len: usize,
 ) -> Option<String> {

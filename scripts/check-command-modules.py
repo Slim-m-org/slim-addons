@@ -29,6 +29,8 @@ SAMPLES = {
     ("markdown-tools", "stats"): ("hello world", "Words: 2\n"),
     ("plot", "bars"): ("3, 7, 2", '{"$slim":"scene/1"'),
     ("regex-tester", "test"): ("\\d+ :: a1 b22", '2 matches\n1: "1" at 1..2'),
+    ("tabletop", "roll"): ("d20 adv+5", "2d20kh1+5 = "),
+    ("tabletop", "sheet"): ("help", "Sheet commands:"),
     ("table", "format"): ("a,b\n1,2", "a | b\n--+--\n1 | 2"),
 }
 

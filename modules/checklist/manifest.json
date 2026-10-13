@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "checklist",
+  "name": "Checklist",
+  "version": "0.1.0",
+  "summary": "A shared checklist and notes everyone in the channel can edit.",
+  "description": "Launch a checklist from the apps menu (or type /checklist, optionally with a title) and keep it in the channel. Anyone looking at the message can add an item from the text field, tap an item to tick or untick it, remove one, or clear everything that is done, and there is a short shared notes field underneath. The whole list lives in the message itself, so it needs no storage. It holds up to 24 items of 40 characters, 280 characters of notes and a 40 character title; anything longer is explained under the list rather than dropped.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/checklist/0.1.0/module.wasm",
+    "sha256": "66d6f7dab7c715bf1e8fc64c6f6c0c4991b2074942920d76501965699c94099b"
+  },
+  "permissions": [
+    {
+      "key": "edit",
+      "name": "Use checklists",
+      "description": "Launch a checklist in this space and edit it."
+    }
+  ],
+  "capabilities": [
+    "command.register"
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "checklist",
+      "permission": "edit",
+      "description": "Open a checklist, or change one."
+    },
+    {
+      "kind": "slash-command",
+      "name": "checklist",
+      "permission": "edit",
+      "command": "checklist",
+      "description": "Start a checklist: /checklist Packing for the trip"
+    },
+    {
+      "kind": "app",
+      "name": "Checklist",
+      "permission": "edit",
+      "command": "checklist",
+      "description": "Launch a shared checklist with notes."
+    }
+  ]
+}
