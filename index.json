@@ -120,6 +120,12 @@
       "name": "Tabletop Kit",
       "version": "0.1.0",
       "summary": "Dice with advantage, an initiative tracker and short character sheets for tabletop games."
+    },
+    {
+      "id": "checklist",
+      "name": "Checklist",
+      "version": "0.1.0",
+      "summary": "A shared checklist and notes everyone in the channel can edit."
     }
   ]
 }
