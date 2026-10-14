@@ -126,6 +126,12 @@
       "name": "Checklist",
       "version": "0.1.0",
       "summary": "A shared checklist and notes everyone in the channel can edit."
+    },
+    {
+      "id": "tags",
+      "name": "Tags",
+      "version": "0.1.0",
+      "summary": "Keep short named snippets like rules and FAQs, and post one into a channel with /tag name."
     }
   ]
 }
