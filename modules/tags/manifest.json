@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "id": "tags",
+  "name": "Tags",
+  "version": "0.1.0",
+  "summary": "Keep short named snippets like rules and FAQs, and post one into a channel with /tag name.",
+  "description": "A space keeps short named snippets - rules, FAQs, links - and anyone allowed can drop one into the channel. /tag name posts a tag as you, /tag alone posts the list of names, and the Tags app shows the same list as a board where you tap a name to read it. People with the manage permission add, change and remove tags with /tagadd name text, /tagedit name text and /tagremove name. A space holds up to 40 tags; a name is lowercase letters, digits and hyphens up to 32 characters, and the text is up to 1000 characters. Tags are stored with the kv.store capability and posted with message.post, and an admin approves each when installing. Without message.post, /tag still works but the text goes out as a plain message from you, without the via Tags footer. The board only shows a tag; posting from it is not possible yet.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/tags/0.1.0/module.wasm",
+    "sha256": "06ba23e666f43651585eddbb15ea221db88ac993f099bf73598483841a4bb46c"
+  },
+  "permissions": [
+    {
+      "key": "use",
+      "name": "Use tags",
+      "description": "Post a tag, list the tags and open the Tags board in this space."
+    },
+    {
+      "key": "manage",
+      "name": "Manage tags",
+      "description": "Add, edit and remove tags in this space."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "kv.store",
+    "message.post"
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "tag",
+      "permission": "use",
+      "description": "Post a tag, or list the tags."
+    },
+    {
+      "kind": "slash-command",
+      "name": "tag",
+      "permission": "use",
+      "command": "tag",
+      "description": "Post a saved tag: /tag rules. Alone, lists the tags"
+    },
+    {
+      "kind": "command",
+      "name": "add",
+      "permission": "manage",
+      "description": "Add a tag."
+    },
+    {
+      "kind": "slash-command",
+      "name": "tagadd",
+      "permission": "manage",
+      "command": "add",
+      "description": "Add a tag: /tagadd rules Be kind"
+    },
+    {
+      "kind": "command",
+      "name": "edit",
+      "permission": "manage",
+      "description": "Change a tag's text."
+    },
+    {
+      "kind": "slash-command",
+      "name": "tagedit",
+      "permission": "manage",
+      "command": "edit",
+      "description": "Change a tag: /tagedit rules New text"
+    },
+    {
+      "kind": "command",
+      "name": "remove",
+      "permission": "manage",
+      "description": "Remove a tag."
+    },
+    {
+      "kind": "slash-command",
+      "name": "tagremove",
+      "permission": "manage",
+      "command": "remove",
+      "description": "Remove a tag: /tagremove rules"
+    },
+    {
+      "kind": "command",
+      "name": "board",
+      "permission": "use",
+      "description": "Open the tags board."
+    },
+    {
+      "kind": "app",
+      "name": "Tags",
+      "permission": "use",
+      "command": "board",
+      "description": "Launch a board of the saved tags."
+    }
+  ]
+}

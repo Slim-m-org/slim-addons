@@ -12,6 +12,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 root = pathlib.Path(__file__).resolve().parent.parent
 runner = sys.argv[1]
@@ -32,6 +33,17 @@ SAMPLES = {
     ("tabletop", "roll"): ("d20 adv+5", "2d20kh1+5 = "),
     ("tabletop", "sheet"): ("help", "Sheet commands:"),
     ("table", "format"): ("a,b\n1,2", "a | b\n--+--\n1 | 2"),
+    ("tags", "add"): ("rules Be kind", ""),
+    ("tags", "tag"): ("rules", "Be kind"),
+    ("tags", "edit"): ("rules Be nice", ""),
+    ("tags", "remove"): ("rules", ""),
+}
+
+# Commands that need stored data first: (module, command) -> commands to run before it, in the same kv store.
+SETUP = {
+    ("tags", "tag"): [("add", "rules Be kind")],
+    ("tags", "edit"): [("add", "rules Be kind")],
+    ("tags", "remove"): [("add", "rules Be kind")],
 }
 
 problems = []
@@ -47,7 +59,11 @@ for manifest in sorted((root / "modules").glob("*/manifest.json")):
             continue
         text, expected = SAMPLES[key]
         wasm = root / m["artifact"]["path"]
-        done = subprocess.run([runner, str(wasm), command, text], capture_output=True, text=True)
+        with tempfile.TemporaryDirectory() as scratch:
+            kv = ["--kv-file", f"{scratch}/kv"]
+            for step, step_input in SETUP.get(key, []):
+                subprocess.run([runner, *kv, str(wasm), step, step_input], capture_output=True, text=True)
+            done = subprocess.run([runner, *kv, str(wasm), command, text], capture_output=True, text=True)
         try:
             reply = json.loads(done.stdout)
         except json.JSONDecodeError:
