@@ -5,6 +5,20 @@
   "version": "0.1.1",
   "summary": "Draw a colour palette from one hex colour, and tap to explore.",
   "description": "Adds a Use permission and a palette app. Launch it from the apps menu or with /palette, type a hex colour, pick a scheme (analogous, complementary, triad, shades), and tap any swatch to make it the new seed. The whole palette is a live scene that looks right in light and dark, and it is computed from the seed alone, so everyone sees the same colours.",
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Rebuilt with the reproducible build recipe; works the same."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

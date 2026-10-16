@@ -5,6 +5,32 @@
   "version": "0.3.3",
   "summary": "Roll dice notation like 2d20+3.",
   "description": "Adds a Roll permission and a roll command. A member who holds the permission can roll dice notation (NdM, optionally +/-K) and see each individual roll plus the total.",
+  "changelog": [
+    {
+      "version": "0.3.3",
+      "changes": [
+        "Spaces around the modifier are accepted, so 2d20 + 3 works."
+      ]
+    },
+    {
+      "version": "0.3.2",
+      "changes": [
+        "Rolls are random each time instead of repeating the same number."
+      ]
+    },
+    {
+      "version": "0.3.1",
+      "changes": [
+        "Rebuilt; works the same."
+      ]
+    },
+    {
+      "version": "0.3.0",
+      "changes": [
+        "The result repeats the notation you rolled."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

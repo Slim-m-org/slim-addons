@@ -5,6 +5,20 @@
   "version": "0.1.1",
   "summary": "Guess a five-letter word in six tries, typing each guess into the scene.",
   "description": "Launch it from the apps menu. Type a five-letter guess and the tiles colour in: green for a letter in the right place, amber for one that belongs somewhere else, plain for one that is not in the word at all. Six tries, then it tells you the answer. Uses the scene contract's input op, so the guess is typed rather than tapped out on an on-screen keyboard. The answer is derived from a seed rather than stored in the state, which rides the wire on every frame.",
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Each launch gets its own word instead of the same one every time."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

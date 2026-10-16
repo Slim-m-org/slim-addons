@@ -5,6 +5,14 @@
   "version": "0.1.0",
   "summary": "Dice with advantage, an initiative tracker and short character sheets for tabletop games.",
   "description": "Three tools for a tabletop group. /r rolls dice notation like 2d6+3, 4d6kh3 (keep highest), 4d6dl1 (drop lowest) and the d20 shorthand adv and dis, and shows every die including the ones dropped. The Initiative Tracker app (or /tabletop) is a shared scene: type a name and initiative to add a combatant, sort the order, press next to pass the turn and tap a row to jump to it or its x to remove it. /sheet keeps a short character sheet per player - a name, hp and up to eight stats - and shows yours back. Sheets are stored with the kv.store capability, which an admin approves when installing; one sheet per member, kept under their module id, and the tracker and dice keep nothing.",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: dice with advantage, an initiative tracker and character sheets."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

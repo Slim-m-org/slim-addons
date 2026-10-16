@@ -5,6 +5,21 @@
   "version": "0.1.1",
   "summary": "Explain a cron schedule field by field, and list its next runs.",
   "description": "Adds an Explain permission and an explain command. Type `/cron */15 9-17 * * 1-5` to see what each field means, or add a start time to list the next five runs, like `/cron 0 9 * * 1-5 @ 2026-01-02 09:00`. Times are UTC and the start is always given, so the answer never depends on a clock. Supports ranges, steps, lists, month and day names, and @daily style aliases.",
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "A starred day field still has to match the other day field.",
+        "A start year the date math cannot handle is refused instead of giving wrong dates."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

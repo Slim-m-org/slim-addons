@@ -5,6 +5,20 @@
   "version": "0.1.1",
   "summary": "Write a short tune on a step grid, together, in the channel.",
   "description": "Launch a step sequencer from the apps menu (or type /music-box) and write a tune into it - sixteen steps across, eight pitches up. The grid is shared with everyone looking at the message, so a step somebody else placed is there when you press play. The pitches are slim's own pentatonic set, the one the notification sounds are built from, so anything written here sounds like slim rather than like a tone generator. 'play tune' plays it back, 'tempo' cycles three speeds and 'clear' empties the grid.",
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Rebuilt with the reproducible build recipe; works the same."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: a step sequencer you write a tune into together."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

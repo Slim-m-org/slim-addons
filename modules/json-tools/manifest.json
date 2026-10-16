@@ -5,6 +5,26 @@
   "version": "0.1.2",
   "summary": "Pretty-print JSON with 2-space indentation.",
   "description": "Adds a Format permission and a format command. A member who holds the permission can pretty-print a JSON string or run it as a JSON code block; only whitespace changes, so key order, duplicate keys and number text stay as written; invalid JSON comes back as an error with a line/column location.",
+  "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "Re-indents your JSON as written instead of rebuilding it, so key order and numbers stay as they were."
+      ]
+    },
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Asks for fewer capabilities when you install it."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

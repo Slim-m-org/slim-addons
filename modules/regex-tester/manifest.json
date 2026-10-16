@@ -5,6 +5,20 @@
   "version": "0.1.1",
   "summary": "Show every match of a regex in some text, with its groups.",
   "description": "Adds a Test permission and a test command. Type `/regex \\d+ :: a1 b22`, or write a `regex` code block with the pattern on the first line and the text below it, then press Run. Lists each match with its position and capture groups. Matching is linear-time, so a hostile pattern cannot run away, and oversized patterns are refused.",
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "The one-line form works when the pattern and text are on one line."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {
