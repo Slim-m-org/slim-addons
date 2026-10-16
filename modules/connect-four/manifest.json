@@ -5,6 +5,32 @@
   "version": "0.3.1",
   "summary": "Drop discs and get four in a row.",
   "description": "Launch a Connect Four board from the apps menu (or type /connect-four) and play it in the channel. The first person to drop a disc is Red, the next different person is Yellow, and drops out of turn are refused. Everyone else watches. Each message is its own game, and 'new game' restarts it. The board and the two players' opaque module ids are kept in the message itself; the module stores nothing and learns nothing else about you.",
+  "changelog": [
+    {
+      "version": "0.3.1",
+      "changes": [
+        "Rebuilt with the reproducible build recipe; works the same."
+      ]
+    },
+    {
+      "version": "0.3.0",
+      "changes": [
+        "Players are seated by who joins first, and a move out of turn is refused."
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "changes": [
+        "Both players' discs are drawn in their own colour."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

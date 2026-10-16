@@ -5,6 +5,26 @@
   "version": "0.1.2",
   "summary": "Run a live poll in the channel, one vote per person, and watch the bars fill in.",
   "description": "Launch a poll from the apps menu (or type /poll Question? | option a, option b) and vote together. Each person has one vote: tap a bar to vote, tap another to move it. 'close poll' stops further votes and shows the result; 'reset' starts over. The poll and an opaque per-module id for each voter are kept in the message itself; the module stores nothing and learns nothing else about you. Because that state passes through each member's client, this stops accidents and casual padding, not a member who forges it.",
+  "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "Long questions wrap and long options are shortened so nothing runs off the poll."
+      ]
+    },
+    {
+      "version": "0.1.1",
+      "changes": [
+        "The close poll button closes the poll."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: one vote per person."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

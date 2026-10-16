@@ -5,6 +5,20 @@
   "version": "0.1.1",
   "summary": "Evaluate arithmetic with variables, a line at a time.",
   "description": "Adds a Calculate permission and an eval command. Type `/calc 2 * (3 + 4)`, or write a `calc` code block with one expression or `name = expression` per line and press Run. Supports + - * / % ^, parentheses, pi, e, ans, and sqrt, abs, round, floor, ceil, min, max, ln, log10, sign. Output is plain text and the same input always gives the same answer.",
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "An overflow inside an expression is now an error instead of a quiet wrong number."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

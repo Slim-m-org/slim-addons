@@ -5,6 +5,14 @@
   "version": "0.1.0",
   "summary": "A shared checklist and notes everyone in the channel can edit.",
   "description": "Launch a checklist from the apps menu (or type /checklist, optionally with a title) and keep it in the channel. Anyone looking at the message can add an item from the text field, tap an item to tick or untick it, remove one, or clear everything that is done, and there is a short shared notes field underneath. The whole list lives in the message itself, so it needs no storage. It holds up to 24 items of 40 characters, 280 characters of notes and a 40 character title; anything longer is explained under the list rather than dropped.",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: a shared checklist and notes."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

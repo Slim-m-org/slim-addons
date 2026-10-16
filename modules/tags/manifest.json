@@ -5,6 +5,14 @@
   "version": "0.1.0",
   "summary": "Keep short named snippets like rules and FAQs, and post one into a channel with /tag name.",
   "description": "A space keeps short named snippets - rules, FAQs, links - and anyone allowed can drop one into the channel. /tag name posts a tag as you, /tag alone posts the list of names, and the Tags app shows the same list as a board where you tap a name to read it. People with the manage permission add, change and remove tags with /tagadd name text, /tagedit name text and /tagremove name. A space holds up to 40 tags; a name is lowercase letters, digits and hyphens up to 32 characters, and the text is up to 1000 characters. Tags are stored with the kv.store capability and posted with message.post, and an admin approves each when installing. Without message.post, /tag still works but the text goes out as a plain message from you, without the via Tags footer. The board only shows a tag; posting from it is not possible yet.",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: named snippets you post with /tag."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

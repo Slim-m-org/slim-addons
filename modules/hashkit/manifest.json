@@ -5,6 +5,26 @@
   "version": "0.1.2",
   "summary": "SHA-256, base64 and hex encode a string.",
   "description": "Adds a Use permission and three commands: sha256, base64 and hex. A member who holds the permission can transform a string with any of the three.",
+  "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "Rebuilt with tests; works the same."
+      ]
+    },
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Asks for fewer capabilities when you install it."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: SHA-256, base64 and hex."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

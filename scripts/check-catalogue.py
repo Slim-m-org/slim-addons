@@ -21,6 +21,31 @@ def fail(module, message):
     problems.append(f"{module}: {message}")
 
 
+def check_changelog(mid, m):
+    """Release notes, held to the limits slim-m's server enforces."""
+    changelog = m.get("changelog", [])
+    if not isinstance(changelog, list):
+        return fail(mid, "changelog is not a list")
+    if changelog and changelog[0].get("version") != m["version"]:
+        fail(mid, f"the newest changelog entry is not version {m['version']}")
+    if len(changelog) > 20:
+        fail(mid, "changelog has more than 20 entries; the server keeps only the newest 20")
+    for entry in changelog:
+        version, changes = entry.get("version"), entry.get("changes", [])
+        if not isinstance(version, str) or not 1 <= len(version.strip()) <= 64:
+            fail(mid, "a changelog entry needs a version of 1 to 64 characters")
+        if not isinstance(changes, list) or len(changes) > 20:
+            fail(mid, f"changelog {version} needs at most 20 lines")
+            continue
+        for line in changes:
+            if not isinstance(line, str) or not 1 <= len(line.strip()) <= 300 or any(ord(c) < 32 or 0x200E <= ord(c) <= 0x202E or 0x2066 <= ord(c) <= 0x2069 for c in line):
+                fail(mid, f"changelog {version} has a line that is empty, over 300 characters, or holds hidden characters")
+
+
+def without_changelog(manifest):
+    return {k: v for k, v in manifest.items() if k != "changelog"}
+
+
 index = json.loads((root / "index.json").read_text())
 listed = {}
 for row in index["modules"]:
@@ -56,6 +81,7 @@ for mid in sorted(on_disk & listed.keys()):
             fail(mid, f"extension point {e['name']} uses an undeclared permission")
         if e["kind"] in ("slash-command", "code-block-runner", "app") and e.get("command") not in names:
             fail(mid, f"extension point {e['name']} runs an undeclared command")
+    check_changelog(mid, m)
 
 def at_base(ref, path):
     done = subprocess.run(["git", "show", f"{ref}:{path}"], cwd=root, capture_output=True)
@@ -75,7 +101,8 @@ def check_against_base(ref):
         if len(parts) == 3 and parts[2] == "manifest.json" and parts[1] != "_template":
             old = json.loads(at_base(ref, path))
             now = root / path
-            if now.is_file() and json.loads(now.read_text()) != old and json.loads(now.read_text())["version"] == old["version"]:
+            # Release notes are read fresh from the registry, so editing only them needs no version bump.
+            if now.is_file() and without_changelog(json.loads(now.read_text())) != without_changelog(old) and json.loads(now.read_text())["version"] == old["version"]:
                 fail(parts[1], f"manifest changed but version {old['version']} did not")
 
 

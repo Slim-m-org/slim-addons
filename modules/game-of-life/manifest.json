@@ -5,6 +5,38 @@
   "version": "0.3.2",
   "summary": "Conway's Game of Life: launch it from the apps menu, or play a life code block inline.",
   "description": "Adds a Play permission and a life command. A member who holds the permission can launch a live board from the composer's apps menu, or seed one from a life code block - a preset (glider, gun, pulsar, ...), an ASCII drawing, or a random soup - then play, step, draw and clear it. Drawing takes a whole drag in one run rather than a call per cell. Each generation is one sandboxed run, so the world is a pure function of its own state.",
+  "changelog": [
+    {
+      "version": "0.3.2",
+      "changes": [
+        "The first drawn row keeps its leading spaces."
+      ]
+    },
+    {
+      "version": "0.3.1",
+      "changes": [
+        "Asks for fewer capabilities when you install it."
+      ]
+    },
+    {
+      "version": "0.3.0",
+      "changes": [
+        "A whole drag is applied in one go."
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "changes": [
+        "Can be launched from the apps menu."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

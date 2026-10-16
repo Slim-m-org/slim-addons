@@ -5,6 +5,26 @@
   "version": "0.2.1",
   "summary": "Play tic-tac-toe in the channel.",
   "description": "Launch a tic-tac-toe board from the apps menu (or type /tic-tac-toe) and play it in the channel. The first person to move is X, the next different person is O, and moves out of turn are refused. Everyone else watches. Each message is its own game, and 'new game' restarts it. The board and the two players' opaque module ids are kept in the message itself; the module stores nothing and learns nothing else about you.",
+  "changelog": [
+    {
+      "version": "0.2.1",
+      "changes": [
+        "Rebuilt with the reproducible build recipe; works the same."
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "changes": [
+        "Players are seated by who joins first, and a move out of turn is refused."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {
