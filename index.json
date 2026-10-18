@@ -132,6 +132,18 @@
       "name": "Tags",
       "version": "0.1.0",
       "summary": "Keep short named snippets like rules and FAQs, and post one into a channel with /tag name."
+    },
+    {
+      "id": "reminder",
+      "name": "Reminder",
+      "version": "0.1.0",
+      "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time."
+    },
+    {
+      "id": "weather",
+      "name": "Weather",
+      "version": "0.1.0",
+      "summary": "Current conditions for any place with /weather Berlin, from Open-Meteo."
     }
   ]
 }

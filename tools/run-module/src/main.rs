@@ -1,6 +1,8 @@
 //! Runs a module the way slim runs it, and prints the JSON it answers with.
 //!
-//! Usage: run-module [--caller <id>] [--fuel <n>] <module.wasm> <command> [input]
+//! Usage: run-module [--caller <id>] [--fuel <n>] [--kv-file <path>]
+//!                   [--fetch-file <path>] [--now-ms <n>] <module.wasm> <command> [input]
+//!        run-module [options] --tick <command> <module.wasm>
 //!
 //! This exists because `scripts/check-scene-ops.py` needs something to drive a
 //! module, and because a module author otherwise has no way to see their own
@@ -13,8 +15,16 @@
 //!   anything else, as slim does - catching an accidental wasi or wasm-bindgen
 //!   dependency here rather than at install time
 //!
-//! `host_call` serves `kv.store` only (see `host.rs`), always approved and in
-//! memory; `--kv-file <path>` keeps the store in that file between runs.
+//! `host_call` serves `kv.store`, `net.fetch` and `message.post`, always
+//! approved (see `host.rs`). The store is in memory, and `--kv-file <path>`
+//! keeps it in that file between runs. `net.fetch` answers from the canned
+//! responses in `--fetch-file <path>` (see `net.rs`) and refuses any host that
+//! file does not name. `message.post` is printed to stderr rather than sent.
+//!
+//! `--now-ms <n>` sets the request's `now_ms`, the clock a module otherwise has
+//! no way to read; unset, it is this machine's clock. `--tick <command>` runs a
+//! scheduled command the way slim's timer does: empty input, as the module's
+//! own principal, with no one typing it.
 //!
 //! `--caller` puts `{"caller":{"id":...}}` in the request, which is how a
 //! seat-based module learns who is acting. `--fuel` meters the run and fails it
@@ -26,6 +36,7 @@
 //! tool put a timeout around each run.
 
 mod host;
+mod net;
 
 use std::process::ExitCode;
 
@@ -40,13 +51,22 @@ struct Options {
     caller: Option<String>,
     fuel: Option<u64>,
     kv_file: Option<String>,
+    fetch_file: Option<String>,
+    now_ms: Option<i64>,
+    tick: bool,
 }
+
+/// The caller id a scheduled run carries: a module's own principal, not a person.
+const SCHEDULED_CALLER: &str = "scheduled";
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut positional = Vec::new();
     let mut caller = None;
     let mut fuel = None;
     let mut kv_file = None;
+    let mut fetch_file = None;
+    let mut now_ms = None;
+    let mut tick = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -56,24 +76,44 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 fuel = Some(n.parse::<u64>().map_err(|_| format!("--fuel: {n} is not a number"))?);
             }
             "--kv-file" => kv_file = Some(iter.next().ok_or("--kv-file needs a path")?.clone()),
+            "--fetch-file" => fetch_file = Some(iter.next().ok_or("--fetch-file needs a path")?.clone()),
+            "--now-ms" => {
+                let n = iter.next().ok_or("--now-ms needs a number")?;
+                now_ms = Some(n.parse::<i64>().map_err(|_| format!("--now-ms: {n} is not a number"))?);
+            }
+            "--tick" => tick = Some(iter.next().ok_or("--tick needs a command")?.clone()),
             _ => positional.push(arg.clone()),
         }
     }
-    match positional.as_slice() {
-        [path, command] => Ok(Options::new(path, command, "", caller, fuel).with_kv_file(kv_file)),
-        [path, command, input] => Ok(Options::new(path, command, input, caller, fuel).with_kv_file(kv_file)),
-        _ => Err("usage: run-module [--caller <id>] [--fuel <n>] [--kv-file <path>] <module.wasm> <command> [input]".to_owned()),
-    }
+    let usage = "usage: run-module [--caller <id>] [--fuel <n>] [--kv-file <path>] [--fetch-file <path>] [--now-ms <n>] \
+                 (<module.wasm> <command> [input] | --tick <command> <module.wasm>)";
+    let ticking = tick.is_some();
+    let mut options = match (tick, positional.as_slice()) {
+        (Some(command), [path]) => Options::new(path, &command, "", caller.or_else(|| Some(SCHEDULED_CALLER.to_owned())), fuel),
+        (None, [path, command]) => Options::new(path, command, "", caller, fuel),
+        (None, [path, command, input]) => Options::new(path, command, input, caller, fuel),
+        _ => return Err(usage.to_owned()),
+    };
+    options.kv_file = kv_file;
+    options.fetch_file = fetch_file;
+    options.now_ms = now_ms;
+    options.tick = ticking;
+    Ok(options)
 }
 
 impl Options {
     fn new(path: &str, command: &str, input: &str, caller: Option<String>, fuel: Option<u64>) -> Self {
-        Options { path: path.into(), command: command.into(), input: input.into(), caller, fuel, kv_file: None }
-    }
-
-    fn with_kv_file(mut self, kv_file: Option<String>) -> Self {
-        self.kv_file = kv_file;
-        self
+        Options {
+            path: path.into(),
+            command: command.into(),
+            input: input.into(),
+            caller,
+            fuel,
+            kv_file: None,
+            fetch_file: None,
+            now_ms: None,
+            tick: false,
+        }
     }
 }
 
@@ -128,6 +168,10 @@ fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
     if let Some(path) = &options.kv_file {
         store.data_mut().kv = host::load(&std::fs::read_to_string(path).unwrap_or_default());
     }
+    if let Some(path) = &options.fetch_file {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+        store.data_mut().fetch = Some(net::Canned::parse(&text)?);
+    }
     if let Some(fuel) = options.fuel {
         store.set_fuel(fuel).map_err(|e| format!("cannot meter the run: {e}"))?;
     }
@@ -137,21 +181,32 @@ fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
         .instantiate_and_start(&mut store, &module)
         .map_err(|e| format!("cannot instantiate: {e}"))?;
 
-    let request = serde_request(&options.command, &options.input, options.caller.as_deref());
+    let now_ms = options.now_ms.unwrap_or_else(clock_ms);
+    let request = serde_request(&options.command, &options.input, options.caller.as_deref(), now_ms);
     let reply = call_run(&mut store, &instance, request.as_bytes());
+    for (n, content) in store.data().posts.iter().enumerate() {
+        eprintln!("message.post #{}: {content}", n + 1);
+    }
     if let Some(path) = &options.kv_file {
         std::fs::write(path, host::dump(&store.data().kv)).map_err(|e| format!("cannot write {path}: {e}"))?;
     }
     reply
 }
 
-/// The request shape slim sends: `{"command":..., "input":..., "caller":{"id":...}, "entropy":...}`.
+/// This machine's clock in the unit slim's `now_ms` uses: UTC epoch milliseconds.
+fn clock_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// The request shape slim sends: `{"command":..., "input":..., "caller":{"id":...}, "entropy":..., "now_ms":...}`.
 ///
 /// Hand-built rather than pulling in serde, so this tool stays a single small
 /// dependency on the same engine slim uses and nothing more. slim gives every
 /// run a fresh `entropy`; set `RUN_MODULE_ENTROPY` to send one, and leave it
 /// unset to send none, as a host older than the field would.
-fn serde_request(command: &str, input: &str, caller: Option<&str>) -> String {
+fn serde_request(command: &str, input: &str, caller: Option<&str>, now_ms: i64) -> String {
     let caller = caller
         .map(|id| format!(",\"caller\":{{\"id\":\"{}\"}}", escape(id)))
         .unwrap_or_default();
@@ -159,7 +214,7 @@ fn serde_request(command: &str, input: &str, caller: Option<&str>) -> String {
         .map(|value| format!(",\"entropy\":\"{}\"", escape(&value)))
         .unwrap_or_default();
     format!(
-        "{{\"command\":\"{}\",\"input\":\"{}\"{caller}{entropy}}}",
+        "{{\"command\":\"{}\",\"input\":\"{}\"{caller}{entropy},\"now_ms\":{now_ms}}}",
         escape(command),
         escape(input)
     )
@@ -254,9 +309,9 @@ mod tests {
 
     #[test]
     fn a_caller_is_put_in_the_request() {
-        let request = serde_request("play", "", Some("al\"ice"));
-        assert_eq!(request, r#"{"command":"play","input":"","caller":{"id":"al\"ice"}}"#);
-        assert!(!serde_request("play", "", None).contains("caller"));
+        let request = serde_request("play", "", Some("al\"ice"), 7);
+        assert_eq!(request, r#"{"command":"play","input":"","caller":{"id":"al\"ice"},"now_ms":7}"#);
+        assert!(!serde_request("play", "", None, 7).contains("caller"));
     }
 
     #[test]
@@ -265,6 +320,23 @@ mod tests {
         assert_eq!((o.caller.as_deref(), o.fuel, o.input.as_str()), (Some("u1"), Some(9), "x"));
         assert!(parse_args(&args(&["--fuel", "many", "m.wasm", "play"])).is_err());
         assert!(parse_args(&args(&["m.wasm"])).is_err());
+    }
+
+    #[test]
+    fn tick_runs_a_scheduled_command_as_the_modules_own_caller() {
+        let o = parse_args(&args(&["--tick", "digest", "--now-ms", "1700000000000", "m.wasm"])).unwrap();
+        assert_eq!((o.command.as_str(), o.input.as_str(), o.tick), ("digest", "", true));
+        assert_eq!((o.caller.as_deref(), o.now_ms), (Some("scheduled"), Some(1_700_000_000_000)));
+        assert!(parse_args(&args(&["--tick", "digest", "m.wasm", "extra", "args"])).is_err());
+        assert!(parse_args(&args(&["--tick"])).is_err());
+        let o = parse_args(&args(&["--fetch-file", "f.json", "m.wasm", "cmd", "x"])).unwrap();
+        assert_eq!(o.fetch_file.as_deref(), Some("f.json"));
+    }
+
+    #[test]
+    fn the_request_carries_a_clock() {
+        assert!(serde_request("c", "", None, 1_700_000_000_000).ends_with(r#","now_ms":1700000000000}"#));
+        assert!(clock_ms() > 1_700_000_000_000);
     }
 
     #[test]

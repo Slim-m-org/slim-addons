@@ -1,22 +1,33 @@
-//! The one host function slim lets a module import, `slim.host_call`, with a
-//! `kv.store` behind it that enforces slim's own bounds. It is a stand-in for
-//! trying a module out: a capability is always approved here, and the store
-//! lives in memory unless `--kv-file` keeps it between runs.
+//! The one host function slim lets a module import, `slim.host_call`, with the
+//! capabilities behind it: `kv.store` held in memory (`--kv-file` keeps it
+//! between runs), `net.fetch` answered from canned responses (`--fetch-file`,
+//! see `net.rs`), and `message.post` recorded and printed instead of sent. It
+//! is a stand-in for trying a module out: a capability is always approved here.
 
 use std::collections::BTreeMap;
 
 use wasmi::{Caller, Extern, Linker, Memory};
+
+use crate::net::Canned;
 
 const MAX_KEY_BYTES: usize = 256;
 const MAX_VALUE_BYTES: usize = 4 * 1024;
 const MAX_ENTRIES: usize = 256;
 const MAX_TOTAL_BYTES: usize = 64 * 1024;
 const MAX_CALLS_PER_RUN: u32 = 64;
+/// Host calls of any kind in one run, refused ones included.
+const MAX_HOST_CALLS_PER_RUN: u32 = 128;
+const MAX_POSTS_PER_RUN: u32 = 3;
 
 #[derive(Default)]
 pub struct Host {
     pub kv: BTreeMap<String, String>,
+    /// The canned responses `net.fetch` answers from; absent without `--fetch-file`.
+    pub fetch: Option<Canned>,
+    /// Every `message.post` content the run made, in order.
+    pub posts: Vec<String>,
     calls: u32,
+    all_calls: u32,
 }
 
 pub fn link(linker: &mut Linker<Host>) -> Result<(), String> {
@@ -48,17 +59,45 @@ fn refusal(message: &str) -> String {
     format!("{{\"ok\":false,\"error\":\"{message}\"}}")
 }
 
-/// Answers one `kv.store` request. The reading is deliberately dumb (string
-/// search, no JSON parser) to keep this tool dependency-light; slim's own
-/// handler is the authority on the wire shape.
+/// Routes one `host_call` request to the capability it names.
 pub fn handle(host: &mut Host, request: &str) -> String {
+    if host.all_calls >= MAX_HOST_CALLS_PER_RUN {
+        return refusal("host_call budget for this run is exhausted");
+    }
+    host.all_calls += 1;
+    match field(request, "capability").as_deref() {
+        Some("kv.store") => kv(host, request),
+        Some("net.fetch") => match host.fetch.as_mut() {
+            Some(canned) => canned.handle(request),
+            None => refusal("net.fetch has no canned responses here; pass --fetch-file"),
+        },
+        Some("message.post") => post(host, request),
+        _ => refusal("capability not available"),
+    }
+}
+
+/// Records a post; slim would send it as the person who ran the module.
+fn post(host: &mut Host, request: &str) -> String {
+    if host.posts.len() as u32 >= MAX_POSTS_PER_RUN {
+        return refusal("message.post budget for this run is exhausted");
+    }
+    match field(request, "content") {
+        Some(content) if !content.trim().is_empty() => {
+            host.posts.push(content);
+            format!("{{\"ok\":true,\"message_id\":\"simulated-{}\"}}", host.posts.len())
+        }
+        _ => refusal("message.post needs content"),
+    }
+}
+
+/// Answers one `kv.store` request. The reading is deliberately dumb (string
+/// search, no JSON parser) to keep it small; slim's own handler is the
+/// authority on the wire shape.
+fn kv(host: &mut Host, request: &str) -> String {
     if host.calls >= MAX_CALLS_PER_RUN {
         return refusal("kv.store call budget for this run is exhausted");
     }
     host.calls += 1;
-    if field(request, "capability").as_deref() != Some("kv.store") {
-        return refusal("capability not available");
-    }
     let (key, value) = (field(request, "key"), field(request, "value"));
     match (field(request, "op").as_deref(), key, value) {
         (Some("get"), Some(key), _) => match host.kv.get(&key) {
@@ -156,7 +195,25 @@ mod tests {
             call(&mut host, r#"{"capability":"kv.store","op":"get","key":"k"}"#);
         }
         assert!(call(&mut host, r#"{"capability":"kv.store","op":"get","key":"k"}"#).contains("budget"));
-        assert!(call(&mut Host::default(), r#"{"capability":"message.post"}"#).contains("not available"));
+        assert!(call(&mut Host::default(), r#"{"capability":"database"}"#).contains("not available"));
+    }
+
+    #[test]
+    fn a_post_is_recorded_not_refused_and_is_capped_per_run() {
+        let mut host = Host::default();
+        let reply = call(&mut host, r#"{"capability":"message.post","content":"hello"}"#);
+        assert!(reply.contains(r#""ok":true"#) && reply.contains("simulated-1"), "{reply}");
+        assert_eq!(host.posts, ["hello"]);
+        assert!(call(&mut host, r#"{"capability":"message.post"}"#).contains("needs content"));
+        for _ in 0..MAX_POSTS_PER_RUN {
+            call(&mut host, r#"{"capability":"message.post","content":"again"}"#);
+        }
+        assert!(call(&mut host, r#"{"capability":"message.post","content":"x"}"#).contains("budget"));
+    }
+
+    #[test]
+    fn net_fetch_without_a_fetch_file_says_how_to_get_one() {
+        assert!(call(&mut Host::default(), r#"{"capability":"net.fetch","url":"https://a.test/"}"#).contains("--fetch-file"));
     }
 
     #[test]

@@ -26,9 +26,9 @@ An app frame is stored and shown to everyone in the channel, and it runs through
 
 ## Posting
 
-The composer posts a slash command's output as a plain message from the person.
-So `/tag name` calls `message.post` (which adds the footer) and answers with empty output, so nothing is posted twice.
-If `message.post` is not approved, or there is no channel, the text becomes the output instead, which the composer posts as the person's own message without the footer.
+slim posts a slash command's output itself, as the person who typed it with the module's "via" footer, so a module's text never passes for the person's own words.
+So `/tag name` calls `message.post` and answers with empty output, which leaves nothing to post twice.
+If `message.post` is not approved, or there is no channel, the text becomes the output instead, which slim posts the same way.
 A post that the host refuses (slow mode, rate limit, no send permission) is shown as an error and is not retried.
 The manage commands post a one-line confirmation when they can, and stay quiet otherwise.
 
@@ -68,5 +68,5 @@ scripts/package-module.sh modules/tags
 ```
 
 `tools/run-module` drives the wasm as the server does, with `kv.store` always approved and held in memory (`--kv-file` keeps it between runs).
-It has no `message.post`, so a run there shows the no-`message.post` fallback.
-The posting path is covered by the unit tests, which swap in a fake host that enforces the same `kv.store` limits.
+It simulates `message.post` by printing the post to stderr.
+The unit tests swap in a fake host that enforces the same `kv.store` limits.

@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "id": "reminder",
+  "name": "Reminder",
+  "version": "0.1.0",
+  "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time.",
+  "description": "/remind 30m take the bread out sets a reminder for 30 minutes from now (m for minutes, h for hours, d for days, from one minute to 30 days). /reminders lists what is waiting and /unremind 2 cancels one by its number. When one comes due, Reminder posts it in the channel an admin picked, as Reminder, within about five minutes. Up to 20 reminders can wait in a space, each up to 200 characters, shared by everyone. It uses kv.store to remember them, schedule to check every five minutes for what is due, and message.post to say it in the channel: an admin approves each when installing, and picks the channel the reminders go to. It reads the host's clock (now_ms), so it needs a slim that provides one.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/reminder/0.1.0/module.wasm",
+    "sha256": "830bfa5044b7f5d30737335789bfc1ed75f19c431bf4aa0b17688313bdf46c6a"
+  },
+  "permissions": [
+    {
+      "key": "use",
+      "name": "Use reminders",
+      "description": "Set, list and cancel reminders in this space."
+    },
+    {
+      "key": "timer",
+      "name": "Run the reminder timer by hand",
+      "description": "Post what is due right now instead of waiting for the next check. The timer runs on its own; hardly anyone needs this."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "kv.store",
+    "message.post",
+    "schedule"
+  ],
+  "schedules": [
+    {
+      "command": "due",
+      "every_minutes": 5
+    }
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "remind",
+      "permission": "use",
+      "description": "Set a reminder."
+    },
+    {
+      "kind": "slash-command",
+      "name": "remind",
+      "permission": "use",
+      "command": "remind",
+      "description": "Set a reminder: /remind 30m take the bread out"
+    },
+    {
+      "kind": "command",
+      "name": "list",
+      "permission": "use",
+      "description": "List the reminders waiting."
+    },
+    {
+      "kind": "slash-command",
+      "name": "reminders",
+      "permission": "use",
+      "command": "list",
+      "description": "List the reminders waiting"
+    },
+    {
+      "kind": "command",
+      "name": "cancel",
+      "permission": "use",
+      "description": "Cancel a reminder by its number."
+    },
+    {
+      "kind": "slash-command",
+      "name": "unremind",
+      "permission": "use",
+      "command": "cancel",
+      "description": "Cancel a reminder: /unremind 2"
+    },
+    {
+      "kind": "command",
+      "name": "due",
+      "permission": "timer",
+      "description": "Post the reminders that have come due."
+    }
+  ]
+}
