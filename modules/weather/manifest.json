@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "weather",
+  "name": "Weather",
+  "version": "0.1.0",
+  "summary": "Current conditions for any place with /weather Berlin, from Open-Meteo.",
+  "description": "/weather place looks a place up and answers with its current temperature, what it feels like, the sky and the wind, for example Berlin, Germany: overcast, 12.3C (feels like 10.1C), wind 14 km/h. It needs no account or key. It asks Open-Meteo, a free weather service, so it needs the net.fetch capability, limited to geocoding-api.open-meteo.com and api.open-meteo.com. Nothing else is reachable, and nothing about the person who asked is sent: only the place name they typed.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 8000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/weather/0.1.0/module.wasm",
+    "sha256": "a35c7c11038c54c5d32d4b0d6d2c3c174c47e787194b42245ff2496e5730bf13"
+  },
+  "permissions": [
+    {
+      "key": "use",
+      "name": "Check the weather",
+      "description": "Look up the weather for a place with /weather."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "net.fetch"
+  ],
+  "network": {
+    "hosts": [
+      "geocoding-api.open-meteo.com",
+      "api.open-meteo.com"
+    ]
+  },
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "now",
+      "permission": "use",
+      "description": "Current conditions for a place."
+    },
+    {
+      "kind": "slash-command",
+      "name": "weather",
+      "permission": "use",
+      "command": "now",
+      "description": "Current weather: /weather Berlin"
+    }
+  ]
+}

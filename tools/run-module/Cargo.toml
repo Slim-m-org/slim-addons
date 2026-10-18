@@ -14,6 +14,8 @@ publish = false
 # Pinned to what slim-m's own module runtime uses, so a module that runs here
 # runs there. A different engine version is a different set of accepted wasm.
 wasmi = "0.51"
+# Reads the canned net.fetch responses and parses a request the way slim does.
+serde_json = "1"
 
 [profile.release]
 opt-level = 1

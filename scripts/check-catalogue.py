@@ -10,6 +10,7 @@ only sees a change when its version is bumped.
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -39,6 +40,9 @@ for mid in sorted(on_disk & listed.keys()):
     for key in ("name", "version", "summary"):
         if m.get(key) != row.get(key):
             fail(mid, f"index.json {key} differs from the manifest")
+    ref = row.get("ref")
+    if ref is not None and not (isinstance(ref, str) and re.fullmatch(r"[0-9a-f]{40}|[A-Za-z0-9][A-Za-z0-9._-]{0,63}", ref) and ".." not in ref):
+        fail(mid, f"index.json ref {ref!r} is not a commit sha or a tag name")
     if m["id"] != mid:
         fail(mid, "manifest id does not match its directory")
     wasm = root / m["artifact"]["path"]

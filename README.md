@@ -8,7 +8,7 @@ slim-m's `docs/decisions/0021-modules-and-the-dock.md`.
 
 ## Layout
 
-- `index.json` - the list the Dock browses.
+- `index.json` - the list the Dock browses. A row may carry `ref`, a commit sha or tag, and the Dock then reads that version's manifest and wasm from that fixed commit instead of `main`.
 - `modules/<id>/manifest.json` - one module's contract (permissions it adds, host
   capabilities it asks for, runtime backend it needs, and its artifact + sha256).
 - `modules/<id>/<version>/module.wasm` - the built module artifact, pinned by version.
@@ -52,6 +52,28 @@ $R --caller alice modules/tic-tac-toe/0.2.0/module.wasm play ''
 ```
 
 A module that uses `kv.store` can run here too: the runner answers `slim.host_call` with an in-memory store that enforces slim's bounds, and `--kv-file <path>` keeps it between runs.
+
+A module that uses `net.fetch` runs here against canned responses, so an author can iterate before pushing anything.
+`--fetch-file <path>` is a JSON object keyed by full URL:
+
+```json
+{ "https://api.example.com/v1/up": { "status": 200, "content_type": "application/json", "body": "{\"up\":true}" } }
+```
+
+The hosts in that file are the hosts the run may reach, the way `network.hosts` is what an admin approves.
+Any other host is refused with slim's own error, a listed host with no entry at that URL answers 404, and the same limits apply: four requests, 64 KiB out, 256 KiB back, sixteen headers.
+Nothing opens a socket.
+
+`message.post` is not refused here: each post is printed to stderr (`message.post #1: ...`) and answered with a made-up message id, up to the three a run may make.
+
+The request carries `now_ms`, the host's clock.
+`--now-ms <n>` sets it, which is how you test "9am" without waiting for it.
+`--tick <command>` runs a command the way slim's timer does, with empty input and no person calling:
+
+```bash
+$R --kv-file /tmp/r --now-ms 1700000000000 modules/reminder/0.1.0/module.wasm remind '30m bread'
+$R --kv-file /tmp/r --now-ms 1700001900000 --tick due modules/reminder/0.1.0/module.wasm
+```
 
 `--fuel <n>` meters the run and fails it with `out of fuel` when the budget is spent, the way slim refuses a module over its limit.
 The scripts below pass the manifest's `runtime.limits.fuel` and a timeout built from `wall_ms`.

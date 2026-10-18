@@ -1,0 +1,12 @@
+{
+  "https://geocoding-api.open-meteo.com/v1/search?name=Berlin&count=1&language=en&format=json": {
+    "status": 200,
+    "content_type": "application/json",
+    "body": "{\"results\": [{\"name\": \"Berlin\", \"admin1\": \"Berlin\", \"country\": \"Germany\", \"latitude\": 52.52, \"longitude\": 13.405}]}"
+  },
+  "https://api.open-meteo.com/v1/forecast?latitude=52.5200&longitude=13.4050&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto": {
+    "status": 200,
+    "content_type": "application/json",
+    "body": "{\"current\": {\"temperature_2m\": 12.34, \"apparent_temperature\": 10.06, \"weather_code\": 3, \"wind_speed_10m\": 14.2}}"
+  }
+}
