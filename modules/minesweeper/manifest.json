@@ -5,6 +5,26 @@
   "version": "0.3.0",
   "summary": "Clear a nine-by-nine board without hitting a mine.",
   "description": "Launch Minesweeper from the apps menu (or type /minesweeper) and clear the board together - tap to reveal, or switch to flagging to mark a mine. The first tap is always safe. Ten mines in eighty-one cells, and the field is rebuilt from a seed each frame to keep the shared state short. The seed is in that state, so anyone who reads it can work the mines out; this is a game to play together, not one with hidden information. Press 'new game' for a fresh field.",
+  "changelog": [
+    {
+      "version": "0.3.0",
+      "changes": [
+        "Each launch gets its own board instead of the same one every time."
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "changes": [
+        "Numbers are drawn on revealed cells, and revealed cells stand out from hidden ones."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

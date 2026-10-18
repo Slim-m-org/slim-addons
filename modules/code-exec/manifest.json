@@ -5,6 +5,34 @@
   "version": "0.1.3",
   "summary": "Run a code block in your space and see its output inline, like a notebook cell.",
   "description": "Adds an Execute permission and a run command. A member who holds the permission can run a code block; the module executes it in slim-m's sandbox and posts the output. JavaScript first. Runs are deterministic: Math.random starts from the same seed on every run and Date.now() is frozen at 0, so do not rely on either to vary between runs.",
+  "changelog": [
+    {
+      "version": "0.1.3",
+      "changes": [
+        "Promises and async code now finish before the output is shown.",
+        "The description says that random numbers and the clock are frozen."
+      ]
+    },
+    {
+      "version": "0.1.2",
+      "changes": [
+        "Console output is kept when the script throws.",
+        "Adds console.error and the other console methods."
+      ]
+    },
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Asks for fewer capabilities when you install it."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: run JavaScript code blocks and see the output."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

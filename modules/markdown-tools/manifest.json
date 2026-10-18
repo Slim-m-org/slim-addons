@@ -5,6 +5,26 @@
   "version": "0.1.2",
   "summary": "Word count, character count and reading time for markdown text.",
   "description": "Adds an Analyze permission and a stats command. A member who holds the permission can get word count, character count and an estimated reading time for a block of markdown, either as a command or a markdown code block.",
+  "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "Markdown markers such as headings and bullets are no longer counted as words."
+      ]
+    },
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Asks for fewer capabilities when you install it."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

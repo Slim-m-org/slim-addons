@@ -82,6 +82,24 @@ class CatalogueTest(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn("another version's wasm", done.stderr)
 
+    def test_a_changelog_whose_newest_entry_is_another_version_is_refused(self):
+        def stale(manifest):
+            manifest["changelog"] = [{"version": "0.0.1", "changes": ["old"]}]
+
+        self.edit_manifest("table", stale)
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("newest changelog entry", done.stderr)
+
+    def test_a_changelog_line_with_a_hidden_character_is_refused(self):
+        def hidden(manifest):
+            manifest["changelog"][0]["changes"] = ["a\u202eb"]
+
+        self.edit_manifest("table", hidden)
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("hidden characters", done.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

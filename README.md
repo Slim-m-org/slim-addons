@@ -107,6 +107,9 @@ Each module keeps its logic in plain Rust with unit tests, so `cd modules/<id> &
 
 `python3 scripts/check-catalogue.py` confirms every module has an `index.json` row that matches its manifest, that each pinned wasm still hashes to its `sha256`, and that every extension point names a permission and command the manifest declares.
 With `--base origin/main` it also fails if a wasm that main already published was changed, or a manifest was edited without bumping its version.
+Release notes are the one exception: `changelog` in a manifest lists what each version changed, newest first (`[{"version": "0.1.1", "changes": ["..."]}]`), and can be edited without a version bump because slim-m reads it fresh to show on its Modules screen.
+The checker requires the newest entry to be the manifest's own version and holds each entry to the server's limits: at most 20 entries of 20 lines, each line 1 to 300 characters with no hidden characters.
+When you ship a new version, add its entry at the top.
 
 `python3 scripts/check-wasm-builds.py` rebuilds each module's wasm with [`scripts/build-wasm.sh`](scripts/build-wasm.sh) and fails if it differs from the one the manifest pins, so a source change cannot ship without a rebuilt wasm and a new version.
 The build uses the toolchain pinned in `rust-toolchain.toml` and remaps every absolute path (cargo home, toolchain, checkout) to a fixed one, so the same source gives the same bytes on any machine.

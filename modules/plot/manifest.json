@@ -5,6 +5,26 @@
   "version": "0.1.2",
   "summary": "Draw a bar chart from numbers, inline.",
   "description": "Give it numbers - `3, 7, 2, 8` or labelled `mon: 3, tue: 7` (one per line or comma-separated) - and it renders a bar chart in the channel. Type `/plot 3, 7, 2`, or write a `chart` code block and press Run. The chart is drawn as a scene, so it looks native in light and dark.",
+  "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "Skips values that are not finite numbers, and large labels are no longer cut off."
+      ]
+    },
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Negative values are drawn as bars below a zero line."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {

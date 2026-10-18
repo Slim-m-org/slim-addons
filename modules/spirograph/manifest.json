@@ -5,6 +5,20 @@
   "version": "0.1.1",
   "summary": "Draw roulette curves with three gears, and change them by tapping.",
   "description": "Launch it from the apps menu to get a hypotrochoid - the curve a pen traces when one gear rolls inside another. Tap the buttons under the drawing to change the fixed gear, the rolling gear and how far out the pen sits; shuffle for a different curve, or reset. The whole curve is one path op, which is what the scene contract gained in slim-m #1234, and the gears ride in the scene's own state, so every frame is a fresh sandboxed run with nothing remembered between them.",
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "The lobe count is right for every gear pair, and the gear buttons moved under the drawing."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {
