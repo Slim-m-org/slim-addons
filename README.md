@@ -11,6 +11,7 @@ slim-m's `docs/decisions/0021-modules-and-the-dock.md`.
 - `index.json` - the list the Dock browses. A row may carry `ref`, a commit sha or tag, and the Dock then reads that version's manifest and wasm from that fixed commit instead of `main`.
 - `modules/<id>/manifest.json` - one module's contract (permissions it adds, host
   capabilities it asks for, runtime backend it needs, and its artifact + sha256).
+- `archive/<id>/` - a retired module, moved here whole with its source and every published wasm. It has no `index.json` row, so the Dock no longer offers it, and CI skips it. Restore one by moving it back under `modules/` and adding its row.
 - `modules/<id>/<version>/module.wasm` - the built module artifact, pinned by version.
 
 Nothing here runs until an admin installs it into a space, and then only with the

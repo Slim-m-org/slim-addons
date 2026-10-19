@@ -98,13 +98,19 @@ def check_against_base(ref):
         parts = path.split("/")
         if len(parts) == 4 and parts[3] == "module.wasm" and parts[1] != "_template":
             now = root / path
-            if not now.is_file():
+            archived = root / "archive" / parts[1] / parts[2] / parts[3]
+            if archived.is_file():
+                if archived.read_bytes() != at_base(ref, path):
+                    fail(parts[1], f"{path} changed while archiving; archive/ must keep the published bytes")
+            elif not now.is_file():
                 fail(parts[1], f"{path} was published and is now gone")
             elif now.read_bytes() != at_base(ref, path):
                 fail(parts[1], f"{path} changed after it was published; ship a new version instead")
         if len(parts) == 3 and parts[2] == "manifest.json" and parts[1] != "_template":
             old = json.loads(at_base(ref, path))
             now = root / path
+            if not now.is_file() and (root / "archive" / parts[1] / "manifest.json").is_file():
+                continue
             # Release notes are read fresh from the registry, so editing only them needs no version bump.
             if now.is_file() and without_changelog(json.loads(now.read_text())) != without_changelog(old) and json.loads(now.read_text())["version"] == old["version"]:
                 fail(parts[1], f"manifest changed but version {old['version']} did not")
@@ -112,6 +118,10 @@ def check_against_base(ref):
 
 if "--base" in sys.argv:
     check_against_base(sys.argv[sys.argv.index("--base") + 1])
+
+for archived in sorted((root / "archive").glob("*/manifest.json")) if (root / "archive").is_dir() else []:
+    if archived.parent.name in listed or (root / "modules" / archived.parent.name).exists():
+        fail(archived.parent.name, "is archived but still listed or still under modules/")
 
 for p in problems:
     print(p, file=sys.stderr)
