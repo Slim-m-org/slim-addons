@@ -1,0 +1,178 @@
+{
+  "schema": 1,
+  "addon_api": 1,
+  "id": "xp",
+  "name": "XP and levels",
+  "version": "0.1.0",
+  "summary": "Members earn XP for time in voice calls and show a level bar on their profile.",
+  "description": "Members earn XP for the minutes they spend in voice calls, and a level bar shows on their profile with a short Lv badge next to their name. By default time alone in a call earns nothing, and messages earn nothing; both can be changed in the module's settings, along with the XP rate and how steep the levels get. It reads closed call sessions (log.read) so no call is missed while the server restarts, listens for call and message events (events), and keeps its totals in its own small database (data.store). An admin approves each when installing.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/xp/0.1.0/module.wasm",
+    "sha256": "e8a92a4336b528610a1cd78d79395bf967f9f9ec742b56029c0619845dfa61ed"
+  },
+  "permissions": [
+    {
+      "key": "catchup",
+      "name": "Award XP by hand",
+      "description": "Count the calls that ended since the last check, now. The timer does this on its own; hardly anyone needs it."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "events",
+    "data.store",
+    "log.read",
+    "schedule"
+  ],
+  "schedules": [
+    {
+      "command": "catchup",
+      "every_minutes": 5
+    }
+  ],
+  "subscriptions": [
+    {
+      "event": "voice.session.closed"
+    },
+    {
+      "event": "message.created"
+    }
+  ],
+  "data": {
+    "max_mb": 8,
+    "tables": [
+      {
+        "name": "xp",
+        "columns": [
+          {
+            "name": "user_id",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "xp",
+            "type": "int",
+            "index": true
+          },
+          {
+            "name": "voice_ms",
+            "type": "int"
+          },
+          {
+            "name": "messages",
+            "type": "int"
+          },
+          {
+            "name": "last_session",
+            "type": "int"
+          },
+          {
+            "name": "last_msg_ms",
+            "type": "int"
+          }
+        ]
+      },
+      {
+        "name": "meta",
+        "columns": [
+          {
+            "name": "name",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "val",
+            "type": "int"
+          }
+        ]
+      }
+    ]
+  },
+  "settings": [
+    {
+      "key": "xp_per_minute",
+      "type": "int",
+      "label": "XP per minute",
+      "help": "Earned for each minute in a call.",
+      "default": 5,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "only_with_others",
+      "type": "bool",
+      "label": "Only with others",
+      "help": "Time alone in a call earns nothing.",
+      "default": true
+    },
+    {
+      "key": "xp_per_message",
+      "type": "int",
+      "label": "XP per message",
+      "help": "Earned for a message, at most once per cooldown. Zero turns it off.",
+      "default": 0,
+      "min": 0,
+      "max": 50
+    },
+    {
+      "key": "message_cooldown_s",
+      "type": "int",
+      "label": "Message cooldown",
+      "help": "Seconds between messages that earn XP.",
+      "default": 60,
+      "min": 10,
+      "max": 600
+    },
+    {
+      "key": "curve",
+      "type": "choice",
+      "label": "Level curve",
+      "help": "How much XP each level asks.",
+      "default": "standard",
+      "choices": [
+        {
+          "value": "gentle",
+          "label": "Gentle"
+        },
+        {
+          "value": "standard",
+          "label": "Standard"
+        },
+        {
+          "value": "steep",
+          "label": "Steep"
+        }
+      ]
+    }
+  ],
+  "slots": [
+    {
+      "kind": "profile.section",
+      "name": "xp",
+      "title": "Level"
+    },
+    {
+      "kind": "member.badge",
+      "name": "level"
+    }
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "catchup",
+      "permission": "catchup",
+      "description": "Count the calls that ended since the last check."
+    }
+  ]
+}

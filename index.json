@@ -144,6 +144,12 @@
       "name": "Weather",
       "version": "0.1.0",
       "summary": "Current conditions for any place with /weather Berlin, from Open-Meteo."
+    },
+    {
+      "id": "xp",
+      "name": "XP and levels",
+      "version": "0.1.0",
+      "summary": "Members earn XP for time in voice calls and show a level bar on their profile."
     }
   ]
 }
