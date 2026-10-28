@@ -19,7 +19,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/xp/0.1.0/module.wasm",
-    "sha256": "e8a92a4336b528610a1cd78d79395bf967f9f9ec742b56029c0619845dfa61ed"
+    "sha256": "c8f40eb47f177d1c56181a6038a17454d81ba58e23bd371dcb48072d2ef8ca36"
   },
   "permissions": [
     {
@@ -173,6 +173,14 @@
       "name": "catchup",
       "permission": "catchup",
       "description": "Count the calls that ended since the last check."
+    }
+  ],
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: XP for voice time, a level bar on the profile and a Lv badge next to the name."
+      ]
     }
   ]
 }

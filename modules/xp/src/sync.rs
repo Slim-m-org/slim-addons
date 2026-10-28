@@ -13,10 +13,12 @@ use crate::store::Store;
 
 /// Rows one `log.read` asks for; the host caps it at 200.
 const PAGE: i64 = 200;
-/// Calls a member costs at most: read, create, claim, and two increments.
-const CALLS_PER_MEMBER: u32 = 5;
-/// Calls a pass spends besides the members: the log read and the cursor write.
-const CALLS_PER_PASS: u32 = 2;
+/// Calls a member costs: the one statement that takes the session and pays for it.
+const CALLS_PER_MEMBER: u32 = 1;
+/// Calls a pass spends besides the members: the log read, the rows of the members, the new rows and the cursor write.
+const CALLS_PER_PASS: u32 = 4;
+/// The most members one pass handles, the most rows one insert takes.
+const MAX_MEMBERS_PER_PASS: u32 = 50;
 /// A total never grows by more than this in one write; the host refuses larger increments.
 const MAX_INCREMENT: i64 = 1 << 53;
 
@@ -30,7 +32,7 @@ pub struct Report {
 pub fn catch_up<H: Host>(store: &Store<H>, settings: &Settings) -> Result<Report, String> {
     let mut report = Report { cursor: store.cursor()?, ..Report::default() };
     loop {
-        let members = store.calls_left().saturating_sub(CALLS_PER_PASS) / CALLS_PER_MEMBER;
+        let members = (store.calls_left().saturating_sub(CALLS_PER_PASS) / CALLS_PER_MEMBER).min(MAX_MEMBERS_PER_PASS);
         if members == 0 {
             break;
         }
@@ -39,9 +41,7 @@ pub fn catch_up<H: Host>(store: &Store<H>, settings: &Settings) -> Result<Report
             break;
         }
         let (batch, resume) = take_members(&rows, members as usize, next);
-        for (user, sessions) in group_by_member(batch) {
-            award_member(store, settings, &user, &sessions)?;
-        }
+        award_batch(store, settings, batch)?;
         store.set_cursor(resume)?;
         report.sessions += batch.len();
         report.cursor = resume;
@@ -77,25 +77,27 @@ fn group_by_member(rows: &[Session]) -> Vec<(String, Vec<&Session>)> {
     groups
 }
 
-fn award_member<H: Host>(store: &Store<H>, settings: &Settings, user: &str, sessions: &[&Session]) -> Result<(), String> {
-    let taken = match store.member(user)? {
-        Some(member) => member.last_session,
-        None => {
-            store.ensure_member(user)?;
-            0
-        }
-    };
+fn award_batch<H: Host>(store: &Store<H>, settings: &Settings, batch: &[Session]) -> Result<(), String> {
+    let groups = group_by_member(batch);
+    let users: Vec<String> = groups.iter().map(|(user, _)| user.clone()).collect();
+    let existing = store.members(&users)?;
+    let missing: Vec<String> = users.iter().filter(|user| !existing.contains_key(*user)).cloned().collect();
+    store.create_members(&missing)?;
+    for (user, sessions) in &groups {
+        let taken = existing.get(user).map_or(0, |member| member.last_session);
+        award_member(store, settings, user, sessions, taken)?;
+    }
+    Ok(())
+}
+
+fn award_member<H: Host>(store: &Store<H>, settings: &Settings, user: &str, sessions: &[&Session], taken: i64) -> Result<(), String> {
     let fresh: Vec<&&Session> = sessions.iter().filter(|s| s.id > taken).collect();
     let Some(top) = fresh.iter().map(|s| s.id).max() else {
         return Ok(());
     };
-    if !store.claim_session(user, top)? {
-        return Ok(());
-    }
     let xp: i64 = fresh.iter().fold(0, |sum, s| sum.saturating_add(session_xp(s, settings)));
     let voice_ms: i64 = fresh.iter().fold(0, |sum, s| sum.saturating_add(s.duration_ms()));
-    store.add(user, "xp", xp.min(MAX_INCREMENT))?;
-    store.add(user, "voice_ms", voice_ms.min(MAX_INCREMENT))
+    store.pay_session(user, top, xp.min(MAX_INCREMENT), voice_ms.min(MAX_INCREMENT)).map(|_| ())
 }
 
 /// The fields of a `message.created` event the award needs.
@@ -122,10 +124,5 @@ pub fn award_message<H: Host>(store: &Store<H>, settings: &Settings, message: &M
     }
     store.ensure_member(message.author_id)?;
     let cooldown_ms = settings.message_cooldown_s.saturating_mul(1000);
-    if !store.claim_message(message.author_id, message.created_at_ms, cooldown_ms)? {
-        return Ok(false);
-    }
-    store.add(message.author_id, "xp", settings.xp_per_message)?;
-    store.add(message.author_id, "messages", 1)?;
-    Ok(true)
+    store.pay_message(message.author_id, message.created_at_ms, cooldown_ms, settings.xp_per_message)
 }

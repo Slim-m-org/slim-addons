@@ -19,9 +19,10 @@ It is the reference module for the module platform's phase 1 contracts: `events`
 
 A pushed event is only a trigger.
 On every `voice.session.closed` event and every 5 minutes, the module reads the closed sessions after its cursor from `log.read`, awards them, and moves the cursor only after the writes succeeded.
-Each member row also remembers the last session id taken for it, and a session is claimed with a conditional update before it is paid, so a lost cursor write or two runs overlapping cannot pay one session twice.
-A crash between the claim and the payment loses that payment rather than doubling it.
-A run has 64 host calls, so a backlog drains over several runs, about ten members per pass.
+Each member row also remembers the last session id taken for it, and a session is claimed and paid in one conditional `update` (set `last_session`, add to `xp` and `voice_ms`, where `last_session` is lower), so a lost cursor write or two runs overlapping cannot pay one session twice and a crash cannot take the claim without the payment.
+A pass reads the rows of up to 50 members with one `in` query, makes the missing ones with one multi-row `insert`, and then spends one call per member.
+A run has 64 host calls, so a backlog drains over several runs, about 50 members per pass.
+A message costs two calls: an `upsert` that adds nothing to a row that exists, and the conditional `update` that takes the cooldown slot and pays.
 
 ## Data
 

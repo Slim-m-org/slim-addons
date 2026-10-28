@@ -74,6 +74,13 @@ fn matches(row: &Row, filters: &Value) -> bool {
     })
 }
 
+fn add_to(row: &mut Row, add: &Map<String, Value>) {
+    for (col, by) in add {
+        let now = row.get(col).and_then(Value::as_i64).unwrap_or(0);
+        row.insert(col.clone(), json!(now + by.as_i64().unwrap()));
+    }
+}
+
 fn refusal(message: &str) -> Result<Value, String> {
     Err(message.to_string())
 }
@@ -97,24 +104,43 @@ impl FakeHost {
         let mut out: Vec<Row> = Vec::new();
         match request["op"].as_str().unwrap() {
             "insert" => {
-                let values = request["values"].as_object().unwrap().clone();
-                if rows.iter().any(|r| r[unique] == values[unique]) {
+                let batch: Vec<Row> = match request.get("rows") {
+                    Some(rows) => rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect(),
+                    None => vec![request["values"].as_object().unwrap().clone()],
+                };
+                assert!(batch.len() <= 50, "the host takes at most 50 rows in one insert");
+                let clash = |row: &Row| rows.iter().any(|r| r[unique] == row[unique]);
+                if batch.iter().any(clash) || (1..batch.len()).any(|i| batch[..i].iter().any(|p| p[unique] == batch[i][unique])) {
                     return refusal("a unique column already holds that value");
                 }
-                rows.push(values);
-                changed = 1;
+                changed = batch.len();
+                rows.extend(batch);
             }
             "upsert" => {
                 let values = request["values"].as_object().unwrap().clone();
+                assert_eq!(request["on"], unique, "the fake upserts on the table's one unique column");
+                let add = request.get("add").and_then(Value::as_object).cloned().unwrap_or_default();
+                assert!(add.keys().all(|c| !values.contains_key(c)), "a column cannot be in both values and add");
                 match rows.iter_mut().find(|r| r[unique] == values[unique]) {
-                    Some(existing) => existing.extend(values),
-                    None => rows.push(values),
+                    Some(existing) => {
+                        existing.extend(values);
+                        add_to(existing, &add);
+                    }
+                    None => {
+                        let mut fresh = values;
+                        add_to(&mut fresh, &add);
+                        rows.push(fresh);
+                    }
                 }
                 changed = 1;
             }
             "update" => {
+                let values = request.get("values").and_then(Value::as_object).cloned().unwrap_or_default();
+                let add = request.get("add").and_then(Value::as_object).cloned().unwrap_or_default();
+                assert!(add.keys().all(|c| !values.contains_key(c)), "a column cannot be in both values and add");
                 for r in rows.iter_mut().filter(|r| matches(r, filters)) {
-                    r.extend(request["values"].as_object().unwrap().clone());
+                    r.extend(values.clone());
+                    add_to(r, &add);
                     changed += 1;
                 }
             }

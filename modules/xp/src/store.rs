@@ -5,7 +5,7 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::award::Session;
 use crate::host::Host;
@@ -13,6 +13,8 @@ use crate::host::Host;
 /// Host calls one run may make, shared by `data.store`, `kv.store` and `log.read`.
 pub const CALLS_PER_RUN: u32 = 64;
 const CURSOR_KEY: &str = "voice_cursor";
+/// The counters a new member row starts at.
+const ZEROED: [&str; 5] = ["xp", "voice_ms", "messages", "last_session", "last_msg_ms"];
 
 /// One member's row in the `xp` table.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -66,43 +68,51 @@ impl<'a, H: Host> Store<'a, H> {
         Ok((sessions, reply["next"].as_i64().unwrap_or(cursor)))
     }
 
-    pub fn member(&self, user: &str) -> Result<Option<Member>, String> {
-        let reply = self.data("get", "xp", json!({"where": [eq("user_id", user)]}))?;
-        Ok(reply["rows"].get(0).map(|row| Member {
-            xp: row["xp"].as_i64().unwrap_or(0),
-            last_session: row["last_session"].as_i64().unwrap_or(0),
-        }))
+    /// The rows of the members that have one, in one call.
+    pub fn members(&self, users: &[String]) -> Result<HashMap<String, Member>, String> {
+        let reply = self.data("query", "xp", json!({"where": [{"col": "user_id", "op": "in", "val": users}], "limit": 200}))?;
+        let rows = reply["rows"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let member = Member { xp: row["xp"].as_i64()?, last_session: row["last_session"].as_i64().unwrap_or(0) };
+                Some((row["user_id"].as_str()?.to_string(), member))
+            })
+            .collect())
     }
 
-    /// Makes the member's zeroed row if it is not there; losing a race to another run is fine.
-    pub fn ensure_member(&self, user: &str) -> Result<(), String> {
-        let zero = json!({"user_id": user, "xp": 0, "voice_ms": 0, "messages": 0, "last_session": 0, "last_msg_ms": 0});
-        match self.data("insert", "xp", json!({"values": zero})) {
-            Err(e) if e.contains("already holds") => Ok(()),
+    /// Makes zeroed rows for members known to have none, in one call. A run that made one first
+    /// refuses the whole batch, so those are made one by one instead.
+    pub fn create_members(&self, users: &[String]) -> Result<(), String> {
+        if users.is_empty() {
+            return Ok(());
+        }
+        let rows: Vec<Value> = users.iter().map(|user| zero_row(user)).collect();
+        match self.data("insert", "xp", json!({"rows": rows})) {
+            Err(e) if e.contains("already holds") => users.iter().try_for_each(|user| self.ensure_member(user)),
             other => other.map(|_| ()),
         }
     }
 
-    /// Takes the member's session `id` for awarding; false when that session or a later one was taken already.
-    pub fn claim_session(&self, user: &str, id: i64) -> Result<bool, String> {
-        let filter = json!([eq("user_id", user), {"col": "last_session", "op": "lt", "val": id}]);
-        let reply = self.data("update", "xp", json!({"values": {"last_session": id}, "where": filter}))?;
-        Ok(reply["changed"].as_i64().unwrap_or(0) > 0)
+    /// Makes the member's zeroed row if it is not there: an upsert that adds nothing to a row that exists.
+    pub fn ensure_member(&self, user: &str) -> Result<(), String> {
+        let add: Map<String, Value> = ZEROED.iter().map(|col| (col.to_string(), json!(0))).collect();
+        self.data("upsert", "xp", json!({"values": {"user_id": user}, "on": "user_id", "add": add})).map(|_| ())
     }
 
-    /// Takes the member's message slot at `at_ms`; false while the cooldown from the last award is still running.
-    pub fn claim_message(&self, user: &str, at_ms: i64, cooldown_ms: i64) -> Result<bool, String> {
+    /// Takes the member's session `id` and pays for it in one statement; false when that session or a later one was taken already.
+    pub fn pay_session(&self, user: &str, id: i64, xp: i64, voice_ms: i64) -> Result<bool, String> {
+        let filter = json!([eq("user_id", user), {"col": "last_session", "op": "lt", "val": id}]);
+        let request = json!({"values": {"last_session": id}, "add": {"xp": xp, "voice_ms": voice_ms}, "where": filter});
+        Ok(self.data("update", "xp", request)?["changed"].as_i64().unwrap_or(0) > 0)
+    }
+
+    /// Takes the member's message slot at `at_ms` and pays for it in one statement; false while the cooldown from the last award is still running.
+    pub fn pay_message(&self, user: &str, at_ms: i64, cooldown_ms: i64, xp: i64) -> Result<bool, String> {
         let earliest = at_ms.saturating_sub(cooldown_ms);
         let filter = json!([eq("user_id", user), {"col": "last_msg_ms", "op": "lte", "val": earliest}]);
-        let reply = self.data("update", "xp", json!({"values": {"last_msg_ms": at_ms}, "where": filter}))?;
-        Ok(reply["changed"].as_i64().unwrap_or(0) > 0)
-    }
-
-    pub fn add(&self, user: &str, col: &str, by: i64) -> Result<(), String> {
-        if by == 0 {
-            return Ok(());
-        }
-        self.data("increment", "xp", json!({"col": col, "by": by, "where": [eq("user_id", user)]})).map(|_| ())
+        let request = json!({"values": {"last_msg_ms": at_ms}, "add": {"xp": xp, "messages": 1}, "where": filter});
+        Ok(self.data("update", "xp", request)?["changed"].as_i64().unwrap_or(0) > 0)
     }
 
     /// XP totals for the members that have a row.
@@ -115,6 +125,10 @@ impl<'a, H: Host> Store<'a, H> {
             .filter_map(|row| Some((row["user_id"].as_str()?.to_string(), row["xp"].as_i64()?)))
             .collect())
     }
+}
+
+fn zero_row(user: &str) -> Value {
+    json!({"user_id": user, "xp": 0, "voice_ms": 0, "messages": 0, "last_session": 0, "last_msg_ms": 0})
 }
 
 fn eq(col: &str, val: &str) -> Value {

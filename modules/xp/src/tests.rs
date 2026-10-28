@@ -59,7 +59,7 @@ fn a_lost_cursor_write_does_not_pay_a_session_again() {
 fn a_failed_write_keeps_the_cursor_so_the_next_pass_retries() {
     let host = FakeHost::default();
     host.push_session(1, "ada", 0, 10 * MIN, 0);
-    *host.fail_op.borrow_mut() = Some("increment".into());
+    *host.fail_op.borrow_mut() = Some("update".into());
     assert_eq!(voice_event(&host)["ok"], false);
     assert_eq!(host.cursor(), 0);
     *host.fail_op.borrow_mut() = None;
@@ -93,17 +93,17 @@ fn settings_decide_the_rate_and_whether_alone_time_counts() {
 #[test]
 fn a_backlog_bigger_than_one_run_drains_over_several_without_loss() {
     let host = FakeHost::default();
-    for id in 1..=40 {
+    for id in 1..=120 {
         host.push_session(id, &format!("user{id}"), 0, 2 * MIN, 0);
     }
     let mut runs = 0;
-    while host.cursor() < 40 {
+    while host.cursor() < 120 {
         assert_eq!(run(&host, "catchup", json!(""), json!({}))["ok"], true);
         runs += 1;
         assert!(runs < 10, "the cursor stopped moving at {}", host.cursor());
     }
     assert!(runs > 1);
-    assert!((1..=40).all(|id| host.xp_of(&format!("user{id}")) == 10));
+    assert!((1..=120).all(|id| host.xp_of(&format!("user{id}")) == 10));
 }
 
 #[test]
@@ -189,4 +189,32 @@ fn the_curve_setting_changes_the_level() {
         items["items"]["ada"]["nodes"][0]["text"].as_str().unwrap().to_string()
     };
     assert_eq!((badge("gentle"), badge("standard"), badge("steep")), ("Lv 4".into(), "Lv 3".into(), "Lv 2".into()));
+}
+
+#[test]
+fn a_member_row_made_by_someone_else_first_is_kept_not_zeroed() {
+    let host = FakeHost::with_xp(&[("ada", 70)]);
+    let store = crate::store::Store::new(&host);
+    store.create_members(&["ada".to_string(), "bob".to_string()]).unwrap();
+    assert_eq!((host.xp_of("ada"), host.xp_of("bob")), (70, 0));
+    assert_eq!(host.xp.borrow().len(), 2);
+}
+
+#[test]
+fn fifty_new_members_cost_a_handful_of_calls_not_five_each() {
+    let host = FakeHost::default();
+    for id in 1..=50 {
+        host.push_session(id, &format!("user{id}"), 0, 2 * MIN, 0);
+    }
+    run(&host, "catchup", json!(""), json!({}));
+    assert_eq!(host.cursor(), 50);
+    assert!(host.calls.get() <= 50 + 6, "{} calls for 50 members", host.calls.get());
+}
+
+#[test]
+fn a_message_from_a_new_member_is_two_calls() {
+    let host = FakeHost::default();
+    message(&host, "ada", 1_000_000, false, json!({"xp_per_message": 3}));
+    assert_eq!(host.calls.get(), 2);
+    assert_eq!((host.xp_of("ada"), host.field("ada", "messages")), (3, 1));
 }
