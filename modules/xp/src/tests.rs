@@ -218,3 +218,28 @@ fn a_message_from_a_new_member_is_two_calls() {
     assert_eq!(host.calls.get(), 2);
     assert_eq!((host.xp_of("ada"), host.field("ada", "messages")), (3, 1));
 }
+
+#[test]
+fn the_statement_that_takes_a_session_also_pays_it_exactly_once() {
+    let host = FakeHost::default();
+    let store = crate::store::Store::new(&host);
+    store.create_members(&["ada".to_string()]).unwrap();
+    assert!(store.pay_session("ada", 5, 100, 60_000).unwrap());
+    assert!(!store.pay_session("ada", 5, 100, 60_000).unwrap(), "the same session is not paid twice");
+    assert!(!store.pay_session("ada", 4, 100, 60_000).unwrap(), "nor an earlier one after a later one");
+    assert_eq!((host.xp_of("ada"), host.field("ada", "voice_ms")), (100, 60_000));
+    assert!(store.pay_session("ada", 6, 10, 1_000).unwrap());
+    assert_eq!(host.xp_of("ada"), 110);
+}
+
+#[test]
+fn the_statement_that_takes_a_message_slot_also_pays_it_once_per_cooldown() {
+    let host = FakeHost::default();
+    let store = crate::store::Store::new(&host);
+    store.ensure_member("ada").unwrap();
+    assert!(store.pay_message("ada", 1_000_000, 60_000, 3).unwrap());
+    assert!(!store.pay_message("ada", 1_000_000, 60_000, 3).unwrap());
+    assert!(!store.pay_message("ada", 1_059_999, 60_000, 3).unwrap());
+    assert!(store.pay_message("ada", 1_060_000, 60_000, 3).unwrap());
+    assert_eq!((host.xp_of("ada"), host.field("ada", "messages")), (6, 2));
+}
