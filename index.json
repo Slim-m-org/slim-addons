@@ -76,8 +76,8 @@
     {
       "id": "word-guess",
       "name": "Word Guess",
-      "version": "0.1.1",
-      "summary": "Guess a five-letter word in six tries, typing each guess into the scene."
+      "version": "0.2.0",
+      "summary": "One five-letter word a day, the same for everyone, each on their own private board, with a spoiler-free result to post."
     },
     {
       "id": "music-box",

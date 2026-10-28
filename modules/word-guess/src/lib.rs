@@ -1,14 +1,20 @@
-//! A starter slim module. Copy this directory, rename it, and edit
-//! `command.rs` and `manifest.json` - this file is the ABI shim and rarely
-//! needs changing.
+//! Word Guess: one word a day, played on a private board. `command.rs` is the game's routing;
+//! this file is the ABI shim.
 //!
 //! Conforms to slim's module ABI v1 (see the deployment's
 //! docs/modules/building-modules.md): exports `memory`, `alloc(len) -> ptr`
-//! and `run(in_ptr, in_len) -> packed(out_ptr, out_len)`, and imports nothing.
+//! and `run(in_ptr, in_len) -> packed(out_ptr, out_len)`, and imports only `slim.host_call`, for
+//! `data.store` and `message.post`.
 //! It never traps on bad input; it always answers with
 //! `{"ok":true,"output":...}` or `{"ok":false,"error":...}`.
 
 mod command;
+mod daily;
+#[cfg(test)]
+mod fake;
+mod game;
+mod host;
+mod scene;
 mod words;
 
 use std::alloc::{alloc as std_alloc, Layout};
@@ -22,6 +28,10 @@ struct Request {
     input: String,
     #[serde(default)]
     caller: Caller,
+    #[serde(default)]
+    now_ms: i64,
+    #[serde(default)]
+    entropy: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -59,7 +69,7 @@ pub extern "C" fn alloc(len: i32) -> i32 {
 #[no_mangle]
 pub extern "C" fn run(in_ptr: i32, in_len: i32) -> i64 {
     let request = unsafe { std::slice::from_raw_parts(in_ptr as *const u8, in_len as usize) };
-    let body = handle(request);
+    let body = handle(&host::SlimHost, request);
 
     let out_len = body.len();
     let out_ptr = if out_len == 0 {
@@ -77,14 +87,19 @@ pub extern "C" fn run(in_ptr: i32, in_len: i32) -> i64 {
     packed as i64
 }
 
-fn handle(request: &[u8]) -> Vec<u8> {
+fn handle<H: host::Host>(host: &H, request: &[u8]) -> Vec<u8> {
     let parsed: Result<Request, _> = serde_json::from_slice(request);
     let parsed = match parsed {
         Ok(req) => req,
         Err(err) => return serialize_err(format!("invalid request: {err}")),
     };
 
-    match command::apply(&parsed.command, &parsed.input, &parsed.caller.id) {
+    match command::apply(
+        host,
+        &parsed.command,
+        &parsed.input,
+        &command::Run { caller: &parsed.caller.id, now_ms: parsed.now_ms, entropy: &parsed.entropy },
+    ) {
         Ok(output) => serialize_ok(output),
         Err(message) => serialize_err(message),
     }

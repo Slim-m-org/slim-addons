@@ -1,341 +1,384 @@
-//! Word Guess: guess a five-letter word in six tries, typing each guess into
-//! the scene.
+//! Word Guess: one word a day, the same for everyone, played on a private board.
 //!
-//! This is the module the `input` op made possible. A scene could be answered
-//! by tapping and nothing else, so a guessing game meant an on-screen keyboard
-//! of thirty tappable rects, which is a lot of ops to say "type a word".
-//!
-//! Every frame is a fresh sandboxed call. The whole game rides in the scene's
-//! opaque `state` as `seed|guess,guess,...`, and nothing is remembered between
-//! calls.
-//!
-//! The answer is not in the state. Only a seed is, and the answer is an index
-//! derived from it - the same trick minesweeper uses for its mines, and for the
-//! same reason: state rides the wire on every frame, so anything in it is
-//! readable by whoever is playing. This is not airtight, since somebody who
-//! runs the module themselves can derive the answer from the seed too. It is a
-//! casual game and that is a fair trade; a module that must keep a secret from
-//! the person playing needs host storage, which does not exist yet.
+//! The app message is shared, so its own frame is only a landing with nothing of anyone's board on
+//! it. A player's board comes back as a private scene, which the host shows to them alone and does
+//! not store or broadcast. Whatever state the client sends is ignored for the daily puzzle: the
+//! player's guesses live in the module's database, keyed by the opaque id the host gives it, so
+//! a board cannot be forged or replayed to play a day twice.
 
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
+use crate::daily::{answer_for, day_of, Plays, Stored};
+use crate::game::{Game, TRIES};
+use crate::host::Host;
+use crate::scene::{render_board, render_landing, share_text, Board};
 use crate::words::WORDS;
 
-const LENGTH: usize = 5;
-const TRIES: usize = 6;
+/// What the host tells a command about the run, beyond who is asking.
+pub struct Run<'a> {
+    pub caller: &'a str,
+    pub now_ms: i64,
+    pub entropy: &'a str,
+}
 
-/// What a letter turned out to be, and the colour it draws as.
-///
-/// Green and amber are hex rather than theme tokens because the palette has no
-/// pair for "right" and "nearly", and a guessing game where those two are not
-/// instantly distinguishable is not playable. Everything else in the scene
-/// stays on tokens.
-const RIGHT: &str = "#4f9d69";
-const MOVED: &str = "#e3b341";
-const ABSENT: &str = "sunken";
-
-pub fn apply(command: &str, input: &str, caller: &str) -> Result<String, String> {
+pub fn apply<H: Host>(host: &H, command: &str, input: &str, run: &Run) -> Result<String, String> {
     match command {
-        "wordguess" => Ok(play(input, caller)),
+        "wordguess" => Ok(play(host, input, run)),
         other => Err(format!("unknown command: {other}")),
     }
-}
-
-/// A seed for a game nobody has played yet, folded from the caller's id so two
-/// people launching do not get the same answer.
-fn seed_from(input: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for &byte in input.as_bytes() {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
-    }
-    hash
-}
-
-fn play(input: &str, caller: &str) -> String {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return render(&Game::new(seed_from(caller)));
-    }
-    let (action, mut game) = match serde_json::from_str::<Action>(trimmed) {
-        Ok(a) => (a.action, Game::parse(&a.state, seed_from(caller))),
-        Err(_) => (String::new(), Game::new(seed_from(&format!("{caller}|{trimmed}")))),
-    };
-
-    if let Some(guess) = action.strip_prefix("guess:") {
-        game.guess(guess);
-    } else if action == "reset" || action == "clear" || action == "new" {
-        game = Game::new(seed_from(&format!("{}|{caller}", game.seed)));
-    }
-    render(&game)
 }
 
 #[derive(Deserialize)]
 struct Action {
     action: String,
-    #[serde(default)]
-    state: String,
 }
 
-struct Game {
-    seed: u64,
-    guesses: Vec<String>,
-    /// Set when a guess could not be used, so the person is told why rather
-    /// than watching their typing vanish.
-    refused: Option<String>,
+/// Opaque ids are hex today; keep a stored key and a post from ever carrying anything else.
+fn safe_id(caller: &str) -> String {
+    caller.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').take(64).collect()
 }
 
-impl Game {
-    fn new(seed: u64) -> Self {
-        Game { seed, guesses: Vec::new(), refused: None }
-    }
-
-    fn parse(state: &str, fallback_seed: u64) -> Self {
-        let (seed, rest) = state.split_once('|').unwrap_or((state, ""));
-        let seed = seed.trim().parse::<u64>().unwrap_or(fallback_seed);
-        let guesses = rest
-            .split(',')
-            .map(str::trim)
-            .filter(|g| g.len() == LENGTH && g.chars().all(|c| c.is_ascii_lowercase()))
-            .take(TRIES)
-            .map(str::to_owned)
-            .collect();
-        Game { seed, guesses, refused: None }
-    }
-
-    fn state(&self) -> String {
-        format!("{}|{}", self.seed, self.guesses.join(","))
-    }
-
-    /// The answer, derived from the seed rather than stored beside it.
-    fn answer(&self) -> &'static str {
-        // A multiply-xor-shift, so neighbouring seeds do not give neighbouring
-        // words; a plain modulo would walk the list one entry at a time.
-        let mixed = (self.seed.wrapping_mul(6_364_136_223_846_793_005)) ^ 0x9E37_79B9_7F4A_7C15;
-        WORDS[(mixed >> 17) as usize % WORDS.len()]
-    }
-
-    fn solved(&self) -> bool {
-        self.guesses.last().map(|g| g == self.answer()).unwrap_or(false)
-    }
-
-    fn over(&self) -> bool {
-        self.solved() || self.guesses.len() >= TRIES
-    }
-
-    fn guess(&mut self, raw: &str) {
-        if self.over() {
-            return;
+fn play<H: Host>(host: &H, input: &str, run: &Run) -> String {
+    let day = day_of(run.now_ms);
+    let player = safe_id(run.caller);
+    let Ok(act) = serde_json::from_str::<Action>(input.trim()) else {
+        return render_landing(day);
+    };
+    // The host hands a shared surface its stored frame's state, never the viewer's, so a private board keeps its own in storage.
+    let name = act.action.as_str();
+    let outcome = if let Some(word) = name.strip_prefix("guess:") {
+        daily_guess(host, day, &player, word)
+    } else if let Some(word) = name.strip_prefix("pguess:") {
+        practice_guess(host, &player, word)
+    } else {
+        match name {
+            "play today" | "today" | "my board" => daily_board(host, day, &player, None),
+            "share" => share(host, day, &player),
+            "practice" | "new practice" => new_practice(host, &player, practice_seed(run)),
+            _ => return render_landing(day),
         }
-        let word: String = raw.trim().to_lowercase();
-        if word.chars().count() != LENGTH || !word.chars().all(|c| c.is_ascii_lowercase()) {
-            self.refused = Some(format!("{LENGTH} letters, a to z"));
-            return;
-        }
-        if self.guesses.iter().any(|g| *g == word) {
-            self.refused = Some("already guessed".to_owned());
-            return;
-        }
-        self.guesses.push(word);
-    }
+    };
+    outcome.unwrap_or_else(|why| failure(&why))
 }
 
-/// Which colour each letter of `guess` earns against `answer`.
-///
-/// Two passes, because one is wrong in a way that shows: a letter is only
-/// "moved" if a copy of it is still unaccounted for after every exact match has
-/// claimed its own. Marking greedily left to right reports two ambers for a
-/// doubled letter that appears once.
-fn score(guess: &str, answer: &str) -> Vec<&'static str> {
-    let guess: Vec<char> = guess.chars().collect();
-    let answer: Vec<char> = answer.chars().collect();
-    let mut marks = vec![ABSENT; guess.len()];
-    let mut claimed = vec![false; answer.len()];
-
-    for i in 0..guess.len() {
-        if answer.get(i) == Some(&guess[i]) {
-            marks[i] = RIGHT;
-            claimed[i] = true;
-        }
-    }
-    for i in 0..guess.len() {
-        if marks[i] == RIGHT {
-            continue;
-        }
-        if let Some(j) = (0..answer.len())
-            .find(|&j| !claimed[j] && answer[j] == guess[i])
-        {
-            marks[i] = MOVED;
-            claimed[j] = true;
-        }
-    }
-    marks
+/// A private frame that says what went wrong, so a refused capability reads as a sentence, not a blank board.
+fn failure(why: &str) -> String {
+    let game = Game::new(WORDS[0]);
+    let board = Board { game: &game, submit: "guess", controls: vec!["close"], status: why.to_owned(), state: String::new() };
+    render_board(&board)
 }
 
-/// One row of the board: a tile and its letter per column.
-fn row(ops: &mut Vec<Value>, index: usize, guess: Option<&str>, marks: &[&str]) {
-    let y = 4.0 + (index as f64) * 12.0;
-    for col in 0..LENGTH {
-        let x = 21.0 + (col as f64) * 12.0;
-        ops.push(json!({
-            "op": "rect",
-            "x": x, "y": y, "w": 10.0, "h": 10.0, "r": 1.5,
-            "fill": marks.get(col).copied().unwrap_or(ABSENT),
-            "stroke": "border", "sw": 0.3
-        }));
-        if let Some(letter) = guess.and_then(|g| g.chars().nth(col)) {
-            ops.push(json!({
-                "op": "text",
-                "x": x + 5.0, "y": y + 5.5,
-                "s": letter.to_uppercase().to_string(),
-                "fill": "text", "size": 6.0, "align": "center"
-            }));
-        }
+fn daily_guess<H: Host>(host: &H, day: i64, player: &str, word: &str) -> Result<String, String> {
+    let plays = Plays::new(host);
+    let stored = plays.load(day, player)?;
+    let mut game = Game::with_guesses(answer_for(day), stored.guesses.iter().map(String::as_str));
+    if game.guess(word) {
+        let kept = Stored { guesses: game.guesses.clone(), done: game.over(), won: game.solved(), seed: 0 };
+        plays.save(day, player, &kept)?;
     }
+    daily_board(host, day, player, Some(game))
 }
 
-fn render(game: &Game) -> String {
-    let answer = game.answer();
-    let mut ops = Vec::new();
-    for i in 0..TRIES {
-        match game.guesses.get(i) {
-            Some(guess) => row(&mut ops, i, Some(guess), &score(guess, answer)),
-            None => row(&mut ops, i, None, &[]),
+/// The player's board for today; `game` is the one just played, when there is one, so a refused guess can say why.
+fn daily_board<H: Host>(host: &H, day: i64, player: &str, game: Option<Game>) -> Result<String, String> {
+    let plays = Plays::new(host);
+    let game = match game {
+        Some(game) => game,
+        None => {
+            let stored = plays.load(day, player)?;
+            Game::with_guesses(answer_for(day), stored.guesses.iter().map(String::as_str))
         }
-    }
-
-    if !game.over() {
-        ops.push(json!({
-            "op": "input",
-            "x": 21.0, "y": 80.0, "w": 58.0,
-            "submit": "guess",
-            "placeholder": "type a word",
-            "max": LENGTH
-        }));
-    }
-
+    };
+    let streak = plays.streak(player, day).unwrap_or(0);
     let status = if game.solved() {
-        format!("got it in {}", game.guesses.len())
+        format!("got it in {}{}", game.guesses.len(), streak_text(streak))
     } else if game.over() {
-        format!("out of tries - it was {}", answer.to_uppercase())
+        format!("out of tries - it was {}{}", game.answer.to_uppercase(), streak_text(streak))
     } else if let Some(why) = &game.refused {
         why.clone()
     } else {
-        format!("{} of {} tries used", game.guesses.len(), TRIES)
+        format!("{} of {TRIES} tries used{}", game.guesses.len(), streak_text(streak))
     };
+    let controls = if game.over() { vec!["share", "practice", "close"] } else { vec!["practice", "close"] };
+    Ok(render_board(&Board { game: &game, submit: "guess", controls, status, state: String::new() }))
+}
 
-    json!({
-        "$slim": "scene/1",
-        "width": 100,
-        "height": 100,
-        "background": "surface",
-        "ops": ops,
-        "state": game.state(),
-        "controls": ["reset"],
-        "status": status,
-    })
-    .to_string()
+fn streak_text(streak: i64) -> String {
+    if streak > 1 {
+        format!(" - {streak} days in a row")
+    } else {
+        String::new()
+    }
+}
+
+/// Posts the day's result as the player, once they have finished it.
+fn share<H: Host>(host: &H, day: i64, player: &str) -> Result<String, String> {
+    let stored = Plays::new(host).load(day, player)?;
+    let game = Game::with_guesses(answer_for(day), stored.guesses.iter().map(String::as_str));
+    if !game.over() {
+        return daily_board(host, day, player, None).map(|scene| with_status(&scene, "finish today's word before sharing it"));
+    }
+    let post = json!({"capability": "message.post", "content": share_text(day, &game)});
+    let status = match host.call(&post) {
+        Ok(_) => "posted to the channel".to_owned(),
+        Err(why) if why.contains("not approved") => "An admin needs to approve Word Guess to post in the Dock.".to_owned(),
+        Err(why) => format!("could not post ({why})"),
+    };
+    daily_board(host, day, player, None).map(|scene| with_status(&scene, &status))
+}
+
+fn with_status(scene: &str, status: &str) -> String {
+    let mut value: Value = serde_json::from_str(scene).unwrap_or(Value::Null);
+    value["status"] = json!(status);
+    value.to_string()
+}
+
+/// A practice board's answer is derived from a seed the host's entropy picks.
+fn practice_seed(run: &Run) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &byte in run.entropy.as_bytes().iter().chain(run.caller.as_bytes()) {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+    }
+    hash | 1
+}
+
+fn practice_answer(seed: u64) -> &'static str {
+    WORDS[((seed.wrapping_mul(6_364_136_223_846_793_005) ^ 0x9E37_79B9_7F4A_7C15) >> 17) as usize % WORDS.len()]
+}
+
+fn new_practice<H: Host>(host: &H, player: &str, seed: u64) -> Result<String, String> {
+    Plays::new(host).save_practice(player, &Stored { seed, ..Stored::default() })?;
+    Ok(practice_scene(&Game::new(practice_answer(seed))))
+}
+
+fn practice_guess<H: Host>(host: &H, player: &str, word: &str) -> Result<String, String> {
+    let plays = Plays::new(host);
+    let mut stored = plays.load_practice(player)?;
+    if stored.seed == 0 {
+        // Typed at a practice board that was never started: start one from what was typed, and play it.
+        stored = Stored { seed: practice_seed(&Run { caller: player, now_ms: 0, entropy: word }), ..Stored::default() };
+    }
+    let mut game = Game::with_guesses(practice_answer(stored.seed), stored.guesses.iter().map(String::as_str));
+    if game.guess(word) {
+        plays.save_practice(player, &Stored { guesses: game.guesses.clone(), done: game.over(), won: game.solved(), seed: stored.seed })?;
+    }
+    Ok(practice_scene(&game))
+}
+
+fn practice_scene(game: &Game) -> String {
+    let status = if game.solved() {
+        format!("got it in {}", game.guesses.len())
+    } else if game.over() {
+        format!("out of tries - it was {}", game.answer.to_uppercase())
+    } else if let Some(why) = &game.refused {
+        why.clone()
+    } else {
+        format!("practice - {} of {TRIES} tries used", game.guesses.len())
+    };
+    render_board(&Board { game, submit: "pguess", controls: vec!["new practice", "today", "close"], status, state: String::new() })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::daily::DAY_MS;
+    use crate::fake::FakeHost;
 
-    fn state_of(scene: &str) -> String {
-        let parsed: Value = serde_json::from_str(scene).unwrap();
-        parsed["state"].as_str().unwrap().to_owned()
+    const DAY: i64 = 20_000;
+    const NOON: i64 = DAY * DAY_MS + DAY_MS / 2;
+
+    fn run<'a>(caller: &'a str, now_ms: i64) -> Run<'a> {
+        Run { caller, now_ms, entropy: "00112233445566778899aabbccddeeff" }
     }
 
-    fn act(action: &str, state: &str, caller: &str) -> String {
-        let input = json!({ "action": action, "state": state }).to_string();
-        apply("wordguess", &input, caller).unwrap()
+    fn act(host: &FakeHost, action: &str, caller: &str, now_ms: i64) -> Value {
+        let input = json!({"action": action, "state": "ignored"}).to_string();
+        serde_json::from_str(&apply(host, "wordguess", &input, &run(caller, now_ms)).unwrap()).unwrap()
     }
 
-    #[test]
-    fn two_callers_launching_get_different_games() {
-        let a = state_of(&apply("wordguess", "", "alice").unwrap());
-        let b = state_of(&apply("wordguess", "", "bob").unwrap());
-        assert_ne!(a, b);
+    fn letters(scene: &Value) -> String {
+        scene["ops"].as_array().unwrap().iter().filter_map(|o| o["s"].as_str()).collect::<Vec<_>>().join("")
     }
 
-    #[test]
-    fn the_same_caller_launching_twice_gets_the_same_game() {
-        let a = apply("wordguess", "", "alice").unwrap();
-        let b = apply("wordguess", "", "alice").unwrap();
-        assert_eq!(a, b);
+    fn wrong_word() -> &'static str {
+        ["slate", "crane", "pound", "fight"].into_iter().find(|w| *w != answer_for(DAY)).unwrap()
     }
 
-    #[test]
-    fn an_unreadable_state_starts_a_game_seeded_by_the_caller() {
-        let a = state_of(&act("guess:crane", "", "alice"));
-        let b = state_of(&act("guess:crane", "", "bob"));
-        assert_ne!(a.split('|').next(), b.split('|').next());
+    fn solve(host: &FakeHost, caller: &str, now_ms: i64) {
+        let word = answer_for(day_of(now_ms));
+        act(host, &format!("guess:{word}"), caller, now_ms);
     }
 
     #[test]
-    fn a_reset_by_another_caller_is_a_different_game() {
-        let start = state_of(&apply("wordguess", "", "alice").unwrap());
-        let a = state_of(&act("reset", &start, "alice"));
-        let b = state_of(&act("reset", &start, "bob"));
-        assert_ne!(a, start);
-        assert_ne!(a, b);
-    }
-
-    #[test]
-    fn a_doubled_letter_is_only_amber_when_a_copy_is_unclaimed() {
-        assert_eq!(score("speed", "abide"), vec![ABSENT, ABSENT, MOVED, ABSENT, MOVED]);
-        assert_eq!(score("sheep", "melee"), vec![ABSENT, ABSENT, MOVED, RIGHT, ABSENT]);
-        assert_eq!(score("crane", "crane"), vec![RIGHT; 5]);
-    }
-
-    #[test]
-    fn a_guess_must_be_five_letters_a_to_z_and_new() {
-        let mut game = Game::new(1);
-        game.guess("abc");
-        game.guess("abcd1");
-        assert!(game.guesses.is_empty());
-        assert!(game.refused.is_some());
-        game.guess("Crane");
-        game.guess("crane");
-        assert_eq!(game.guesses, vec!["crane"]);
-        assert_eq!(game.refused.as_deref(), Some("already guessed"));
-    }
-
-    #[test]
-    fn the_state_round_trips_and_drops_unusable_guesses() {
-        let mut game = Game::new(42);
-        game.guess("crane");
-        game.guess("slate");
-        let back = Game::parse(&game.state(), 0);
-        assert_eq!(back.seed, 42);
-        assert_eq!(back.guesses, game.guesses);
-        assert_eq!(Game::parse("7|crane,TOOLONG,ab,slate", 0).guesses, vec!["crane", "slate"]);
-    }
-
-    #[test]
-    fn the_game_ends_when_solved_or_out_of_tries() {
-        let mut game = Game::new(3);
-        let answer = game.answer();
-        game.guess(answer);
-        assert!(game.solved() && game.over());
-        game.guess("crane");
-        assert_eq!(game.guesses.len(), 1);
-
-        let mut lost = Game::new(3);
-        for w in ["aaaaa", "bbbbb", "ccccc", "ddddd", "eeeee", "fffff", "ggggg"] {
-            lost.guess(w);
+    fn launching_shows_the_shared_landing_and_unknown_actions_return_to_it() {
+        let host = FakeHost::default();
+        let launched: Value = serde_json::from_str(&apply(&host, "wordguess", "", &run("ann", NOON)).unwrap()).unwrap();
+        assert!(launched.get("private").is_none());
+        assert_eq!(launched["controls"], json!(["play today", "practice"]));
+        assert_eq!(host.calls.get(), 0, "the landing needs nothing from the host");
+        for action in ["close", "nonsense", ""] {
+            assert!(act(&host, action, "ann", NOON).get("private").is_none(), "{action}");
         }
-        assert_eq!(lost.guesses.len(), TRIES);
-        assert!(lost.over() && !lost.solved());
+        assert!(apply(&host, "nope", "", &run("ann", NOON)).is_err());
     }
 
     #[test]
-    fn an_open_game_offers_the_input_and_a_finished_one_does_not() {
-        let open = render(&Game::new(3));
-        assert!(open.contains(r#""op":"input""#));
-        let mut done = Game::new(3);
-        done.guess(done.answer());
-        assert!(!render(&done).contains(r#""op":"input""#));
+    fn two_players_the_same_day_get_the_same_word_on_separate_boards() {
+        let host = FakeHost::default();
+        let ann = act(&host, &format!("guess:{}", wrong_word()), "ann", NOON);
+        let bob = act(&host, "play today", "bob", NOON + 1_000);
+        assert_eq!(ann["private"], true);
+        assert_eq!(letters(&ann), wrong_word().to_uppercase());
+        assert_eq!(letters(&bob), "", "one finishing does not show their letters to the other");
+        let bob_guess = act(&host, &format!("guess:{}", answer_for(DAY)), "bob", NOON + 2_000);
+        assert!(bob_guess["status"].as_str().unwrap().starts_with("got it in 1"));
+        let ann_again = act(&host, "play today", "ann", NOON + 3_000);
+        assert_eq!(letters(&ann_again), wrong_word().to_uppercase(), "ann's board is still her own");
+    }
+
+    #[test]
+    fn a_board_survives_between_calls_and_the_clients_own_state_is_ignored() {
+        let host = FakeHost::default();
+        act(&host, &format!("guess:{}", wrong_word()), "ann", NOON);
+        let forged = format!("{DAY}|{},{},{}", answer_for(DAY), answer_for(DAY), answer_for(DAY));
+        let input = json!({"action": "play today", "state": forged}).to_string();
+        let again: Value = serde_json::from_str(&apply(&host, "wordguess", &input, &run("ann", NOON + 5_000)).unwrap()).unwrap();
+        assert_eq!(letters(&again), wrong_word().to_uppercase());
+        assert!(again["status"].as_str().unwrap().starts_with("1 of 6"), "{}", again["status"]);
+    }
+
+    #[test]
+    fn a_finished_day_shows_the_finished_board_and_takes_no_more_guesses() {
+        let host = FakeHost::default();
+        solve(&host, "ann", NOON);
+        let shown = act(&host, "play today", "ann", NOON + 10_000);
+        assert!(shown["status"].as_str().unwrap().starts_with("got it in 1"));
+        assert!(!shown["ops"].as_array().unwrap().iter().any(|o| o["op"] == "input"), "no input once finished");
+        assert_eq!(shown["controls"], json!(["share", "practice", "close"]));
+        let stored = host.plays.borrow().clone();
+        let more = act(&host, &format!("guess:{}", wrong_word()), "ann", NOON + 20_000);
+        assert_eq!(letters(&more), answer_for(DAY).to_uppercase());
+        assert_eq!(*host.plays.borrow(), stored, "a second guess the same day changed nothing");
+    }
+
+    #[test]
+    fn running_out_of_tries_finishes_the_day_and_reveals_the_word_to_that_player_only() {
+        let host = FakeHost::default();
+        let mut last = Value::Null;
+        for word in ["aaaaa", "bbbbb", "ddddd", "eeeee", "fffff", "ggggg"] {
+            last = act(&host, &format!("guess:{word}"), "ann", NOON);
+        }
+        assert!(last["status"].as_str().unwrap().contains(&answer_for(DAY).to_uppercase()), "{}", last["status"]);
+        let bob = act(&host, "play today", "bob", NOON);
+        assert!(!bob["status"].as_str().unwrap().contains(&answer_for(DAY).to_uppercase()));
+    }
+
+    #[test]
+    fn tomorrow_is_a_new_word_and_a_new_board() {
+        let host = FakeHost::default();
+        solve(&host, "ann", NOON);
+        let next = act(&host, "play today", "ann", NOON + DAY_MS);
+        assert_eq!(letters(&next), "");
+        assert!(next["status"].as_str().unwrap().starts_with("0 of 6"));
+        assert_ne!(answer_for(DAY), answer_for(DAY + 1));
+    }
+
+    #[test]
+    fn a_guess_that_cannot_be_used_says_why_and_is_not_stored() {
+        let host = FakeHost::default();
+        let short = act(&host, "guess:abc", "ann", NOON);
+        assert_eq!(short["status"], "5 letters, a to z");
+        act(&host, &format!("guess:{}", wrong_word()), "ann", NOON);
+        let repeat = act(&host, &format!("guess:{}", wrong_word()), "ann", NOON);
+        assert_eq!(repeat["status"], "already guessed");
+        let stored = host.plays.borrow();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0]["guesses"], wrong_word());
+    }
+
+    #[test]
+    fn sharing_waits_for_a_finished_board_and_posts_tries_and_tiles_without_the_word() {
+        let host = FakeHost::default();
+        act(&host, &format!("guess:{}", wrong_word()), "ann", NOON);
+        let early = act(&host, "share", "ann", NOON);
+        assert_eq!(early["status"], "finish today's word before sharing it");
+        assert!(host.posts.borrow().is_empty());
+
+        solve(&host, "ann", NOON);
+        let shared = act(&host, "share", "ann", NOON);
+        assert_eq!(shared["status"], "posted to the channel");
+        let posts = host.posts.borrow();
+        assert_eq!(posts.len(), 1);
+        assert!(posts[0].starts_with(&format!("Word Guess day {DAY} 2/6")), "{}", posts[0]);
+        assert!(!posts[0].to_lowercase().contains(answer_for(DAY)));
+        assert!(posts[0].contains("#####"));
+    }
+
+    #[test]
+    fn a_post_the_host_refuses_is_said_not_swallowed() {
+        let host = FakeHost::default();
+        solve(&host, "ann", NOON);
+        host.refuse_post.set(true);
+        let shared = act(&host, "share", "ann", NOON);
+        assert!(shared["status"].as_str().unwrap().contains("approve"), "{}", shared["status"]);
+    }
+
+    #[test]
+    fn practice_is_a_private_random_board_that_keeps_its_state_in_storage() {
+        let host = FakeHost::default();
+        let start = act(&host, "practice", "ann", NOON);
+        assert_eq!(start["private"], true);
+        assert_eq!(start["controls"], json!(["new practice", "today", "close"]));
+        let one = act(&host, "pguess:crane", "ann", NOON);
+        assert_eq!(letters(&one), "CRANE");
+        let two = act(&host, "pguess:slate", "ann", NOON);
+        assert_eq!(letters(&two), "CRANESLATE");
+        let other = act(&host, "pguess:crane", "bob", NOON);
+        assert_eq!(letters(&other), "CRANE", "bob's practice is his own, started on the spot");
+        let streak_rows = host.plays.borrow().iter().filter(|r| r["day"] == -1).count();
+        assert_eq!(streak_rows, 2, "one practice row per player, no daily row");
+    }
+
+    #[test]
+    fn practice_boards_differ_between_launches_and_between_players() {
+        let host = FakeHost::default();
+        let seed_of = |caller: &str, entropy: &str| {
+            let input = json!({"action": "practice"}).to_string();
+            apply(&host, "wordguess", &input, &Run { caller, now_ms: NOON, entropy }).unwrap();
+            Plays::new(&host).load_practice(caller).unwrap().seed
+        };
+        let a = seed_of("ann", "00112233445566778899aabbccddeeff");
+        let b = seed_of("ann", "ffeeddccbbaa99887766554433221100");
+        let c = seed_of("bob", "00112233445566778899aabbccddeeff");
+        assert!(a != b && a != c && a != 0);
+    }
+
+    #[test]
+    fn a_streak_shows_on_the_board_after_consecutive_wins() {
+        let host = FakeHost::default();
+        for day in 0..3 {
+            solve(&host, "ann", NOON - day * DAY_MS);
+        }
+        let board = act(&host, "play today", "ann", NOON);
+        assert!(board["status"].as_str().unwrap().contains("3 days in a row"), "{}", board["status"]);
+    }
+
+    #[test]
+    fn a_host_that_has_not_approved_the_store_gets_a_sentence_not_a_blank_board() {
+        let host = FakeHost::default();
+        host.refuse.set(true);
+        let board = act(&host, "play today", "ann", NOON);
+        assert!(board["status"].as_str().unwrap().contains("An admin needs to approve"), "{}", board["status"]);
+        assert_eq!(board["private"], true);
+    }
+
+    #[test]
+    fn a_caller_id_cannot_break_the_key_it_is_stored_under() {
+        let host = FakeHost::default();
+        act(&host, &format!("guess:{}", wrong_word()), "a|b\"c\u{0}", NOON);
+        let key = host.plays.borrow()[0]["k"].as_str().unwrap().to_owned();
+        assert_eq!(key, format!("{DAY}|abc"));
     }
 }
