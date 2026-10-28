@@ -4,6 +4,7 @@
 use serde_json::{json, Value};
 
 use crate::board::{clock, Board};
+use crate::level::Level;
 
 pub const CELL: f64 = 22.0;
 /// The gutter between cells as a share of a cell, which is how a `cells` op reads `gap`.
@@ -24,7 +25,7 @@ fn count_colour(count: u8) -> &'static str {
     }
 }
 
-pub fn render(board: &Board, now_ms: i64) -> String {
+pub fn render(board: &Board, now_ms: i64, note: Option<&str>) -> String {
     let (cols, rows) = (board.level.cols, board.level.rows);
     let (width, mut height) = (cols as f64 * CELL, rows as f64 * CELL);
     let mines = board.mines();
@@ -84,7 +85,7 @@ pub fn render(board: &Board, now_ms: i64) -> String {
         "height": height,
         "background": "surface",
         "ops": ops,
-        "status": status(board, now_ms),
+        "status": note.map_or_else(|| status(board, now_ms), str::to_owned),
         "controls": controls(board),
         "state": board.state(),
         "live": true,
@@ -123,11 +124,43 @@ fn status(board: &Board, now_ms: i64) -> String {
 /// status line to say what a tap does.
 fn controls(board: &Board) -> Vec<&'static str> {
     let mode = if board.flagging { "dig mode" } else { "flag mode" };
+    let access = if board.open { "host only" } else { "everyone plays" };
     if board.over() {
-        vec!["new game", "beginner", "intermediate", "expert", "custom"]
+        vec!["new game", "beginner", "intermediate", "expert", "custom", "scores"]
     } else {
-        vec![mode, "new game", "beginner", "intermediate", "expert", "custom"]
+        vec![mode, "new game", "beginner", "intermediate", "expert", "custom", "scores", access]
     }
+}
+
+/// The scoreboard for `level`: the fastest times with the names players gave, and a field to give one.
+pub fn render_scores(board: &Board, level: Level, lines: &[(String, i64)], note: Option<&str>) -> String {
+    const ROW: f64 = 20.0;
+    let rows = lines.len().max(1) as f64;
+    let (width, top) = (240.0, 30.0);
+    let height = top + rows * ROW + 40.0;
+    let title = format!("Best times - {}", level.preset_name().unwrap_or("beginner"));
+    let mut ops = vec![json!({"op": "text", "x": width / 2.0, "y": 14.0, "s": title, "fill": "accent", "size": 13.0, "align": "center"})];
+    if lines.is_empty() {
+        ops.push(json!({"op": "text", "x": width / 2.0, "y": top + 10.0, "s": "no times yet", "fill": "muted", "align": "center"}));
+    }
+    for (i, (name, ms)) in lines.iter().enumerate() {
+        let y = top + i as f64 * ROW + 10.0;
+        ops.push(json!({"op": "text", "x": 12.0, "y": y, "s": format!("{}", i + 1), "fill": "muted", "align": "left"}));
+        ops.push(json!({"op": "text", "x": 36.0, "y": y, "s": name, "fill": "text", "align": "left"}));
+        ops.push(json!({"op": "text", "x": width - 12.0, "y": y, "s": clock(*ms), "fill": "text", "align": "right"}));
+    }
+    ops.push(json!({
+        "op": "input", "submit": "name", "x": 12.0, "y": top + rows * ROW + 8.0, "w": width - 24.0,
+        "placeholder": "your name for this board", "max": crate::scores::MAX_NAME,
+    }));
+    json!({
+        "$slim": "scene/1", "width": width, "height": height, "background": "surface", "ops": ops,
+        "status": note.unwrap_or("fastest times"),
+        "controls": ["back", "beginner", "intermediate", "expert"],
+        "state": board.state(),
+        "live": true,
+    })
+    .to_string()
 }
 
 #[cfg(test)]
@@ -150,7 +183,7 @@ mod tests {
         let mut board = Board::new(2_024, BEGINNER);
         board.prepare_opening(40);
         board.tap(40, 1);
-        let scene = parsed(&render(&board, 2));
+        let scene = parsed(&render(&board, 2, None));
         let texts: Vec<&Value> = scene["ops"].as_array().unwrap().iter().filter(|o| o["op"] == "text").collect();
         assert!(!texts.is_empty());
         assert!(texts.iter().all(|t| t["s"].is_string() && t.get("text").is_none()));
@@ -172,7 +205,7 @@ mod tests {
         won.end_ms = Some(61_000);
         let mut dead = Board::new(5, INTERMEDIATE);
         dead.tap(dead.mines().iter().position(|m| *m).unwrap(), 9);
-        for scene in [render(&flagging, 1), render(&won, 1), render(&dead, 1), render(&Board::new(7, EXPERT), 1)] {
+        for scene in [render(&flagging, 1, None), render(&won, 1, None), render(&dead, 1, None), render(&Board::new(7, EXPERT), 1, None)] {
             let scene = parsed(&scene);
             let palette = op(&scene, "cells").unwrap()["palette"].as_array().unwrap().clone();
             for name in palette.iter().filter_map(Value::as_str) {
@@ -190,7 +223,7 @@ mod tests {
 
     #[test]
     fn a_fresh_board_is_one_hidden_grid_that_answers_a_tap_and_a_right_click() {
-        let scene = parsed(&render(&Board::new(3, BEGINNER), 0));
+        let scene = parsed(&render(&Board::new(3, BEGINNER), 0, None));
         let grid = op(&scene, "cells").unwrap();
         assert_eq!((grid["cols"].as_u64(), grid["rows"].as_u64()), (Some(9), Some(9)));
         assert_eq!(grid["data"].as_str().unwrap(), "0".repeat(81));
@@ -202,7 +235,7 @@ mod tests {
     #[test]
     fn each_level_is_drawn_at_its_own_size() {
         for (level, w, h) in [(BEGINNER, 198.0, 198.0), (INTERMEDIATE, 352.0, 352.0), (EXPERT, 660.0, 352.0)] {
-            let scene = parsed(&render(&Board::new(3, level), 0));
+            let scene = parsed(&render(&Board::new(3, level), 0, None));
             assert_eq!((scene["width"].as_f64(), scene["height"].as_f64()), (Some(w), Some(h)), "{level:?}");
         }
     }
@@ -216,7 +249,7 @@ mod tests {
             board.revealed[i] = !mines[i];
             board.flagged[i] = mines[i];
         }
-        let size = render(&board, 0).len();
+        let size = render(&board, 0, None).len();
         assert!(size < 48 * 1024, "{size} bytes leaves too little room under the 64 KB ceiling");
     }
 
@@ -224,7 +257,7 @@ mod tests {
     fn flag_mode_tints_the_hidden_cells_and_the_button_names_the_other_mode() {
         let mut board = Board::new(3, BEGINNER);
         board.flagging = true;
-        let scene = parsed(&render(&board, 0));
+        let scene = parsed(&render(&board, 0, None));
         assert_eq!(op(&scene, "cells").unwrap()["data"].as_str().unwrap(), "2".repeat(81));
         assert_eq!(scene["controls"][0], "dig mode");
         assert!(scene["status"].as_str().unwrap().starts_with("flagging - 10 to place"));
@@ -235,7 +268,7 @@ mod tests {
         let mut board = Board::new(3, BEGINNER);
         board.toggle_flag(4);
         board.toggle_flag(5);
-        let scene = parsed(&render(&board, 0));
+        let scene = parsed(&render(&board, 0, None));
         let circles = scene["ops"].as_array().unwrap().iter().filter(|o| o["op"] == "circle").count();
         assert_eq!(circles, 2);
         assert_eq!(scene["status"], "8 mines left");
@@ -246,10 +279,10 @@ mod tests {
         let mut board = Board::new(3, BEGINNER);
         board.prepare_opening(40);
         board.tap(40, 100_000);
-        assert_eq!(parsed(&render(&board, 165_000))["status"], "10 mines left - 1:05");
+        assert_eq!(parsed(&render(&board, 165_000, None))["status"], "10 mines left - 1:05");
         let mine = board.mines().iter().position(|m| *m).unwrap();
         board.tap(mine, 130_000);
-        let status = parsed(&render(&board, 900_000))["status"].as_str().unwrap().to_owned();
+        let status = parsed(&render(&board, 900_000, None))["status"].as_str().unwrap().to_owned();
         assert_eq!(status, "boom - new game to try again - 0:30");
     }
 
@@ -262,7 +295,7 @@ mod tests {
         }
         board.start_ms = Some(1_000);
         board.end_ms = Some(84_000);
-        let scene = parsed(&render(&board, 5_000_000));
+        let scene = parsed(&render(&board, 5_000_000, None));
         let words: Vec<&str> = scene["ops"].as_array().unwrap().iter().filter_map(|o| o["s"].as_str()).collect();
         assert!(words.contains(&"You win!"), "{words:?}");
         assert!(words.contains(&"1:23 on beginner"), "{words:?}");
@@ -275,7 +308,7 @@ mod tests {
     fn a_dead_board_invites_no_more_taps_and_shows_the_mines() {
         let mut board = Board::new(5, BEGINNER);
         board.tap(board.mines().iter().position(|m| *m).unwrap(), 1);
-        let scene = parsed(&render(&board, 2));
+        let scene = parsed(&render(&board, 2, None));
         assert!(op(&scene, "cells").unwrap().get("tap").is_none());
         let circles = scene["ops"].as_array().unwrap().iter().filter(|o| o["op"] == "circle").count();
         assert_eq!(circles, 10);
@@ -284,9 +317,9 @@ mod tests {
     #[test]
     fn the_custom_field_appears_under_the_board_only_when_asked_for() {
         let mut board = Board::new(3, custom(12, 8, 12).unwrap());
-        assert!(op(&parsed(&render(&board, 0)), "input").is_none());
+        assert!(op(&parsed(&render(&board, 0, None)), "input").is_none());
         board.customizing = true;
-        let scene = parsed(&render(&board, 0));
+        let scene = parsed(&render(&board, 0, None));
         let input = op(&scene, "input").unwrap();
         assert_eq!(input["submit"], "custom");
         assert!(input["y"].as_f64().unwrap() >= scene["height"].as_f64().unwrap() - 32.0);

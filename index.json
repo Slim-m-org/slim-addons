@@ -64,8 +64,8 @@
     {
       "id": "minesweeper",
       "name": "Minesweeper",
-      "version": "0.4.0",
-      "summary": "Clear a board without hitting a mine: three sizes or your own, a clock, right-click flags and a win screen."
+      "version": "0.5.0",
+      "summary": "Clear a board together: a clock, right-click flags, three sizes, a win card and a scoreboard of the fastest times."
     },
     {
       "id": "spirograph",

@@ -2,10 +2,19 @@
   "schema": 1,
   "id": "minesweeper",
   "name": "Minesweeper",
-  "version": "0.4.0",
-  "summary": "Clear a board without hitting a mine: three sizes or your own, a clock, right-click flags and a win screen.",
-  "description": "Launch Minesweeper from the apps menu (or type /minesweeper) and clear the board together. Tap to reveal, right-click or long-press to flag (or switch to flagging for a finger with no right button). The first tap is always safe, the clock starts on it, and a cleared board shows your time. Pick beginner (9 by 9, 10 mines), intermediate (16 by 16, 40) or expert (30 by 16, 99), or type your own size. The field is rebuilt from a seed each frame to keep the shared state short. The seed is in that state, so anyone who reads it can work the mines out; this is a game to play together, not one with hidden information. Press 'new game' for a fresh field.",
+  "version": "0.5.0",
+  "summary": "Clear a board together: a clock, right-click flags, three sizes, a win card and a scoreboard of the fastest times.",
+  "description": "Launch Minesweeper from the apps menu (or type /minesweeper) and clear the board together: everyone who can see it may play, or the host can close it to themselves. Tap to reveal, right-click or long-press to flag (or switch to flagging for a finger with no right button). The first tap is always safe, the clock starts on it, and a cleared board shows your time. Pick beginner (9 by 9, 10 mines), intermediate (16 by 16, 40) or expert (30 by 16, 99), or type your own size. The field is rebuilt from a seed each frame to keep the shared state short. The seed is in that state, so anyone who reads it can work the mines out; this is a game to play together, not one with hidden information. Press 'new game' for a fresh field. Cleared boards on the three standard sizes go on a scoreboard of fastest times, kept in the module's own database (data.store, which an admin approves at install); the win is replayed from the move log before a time is written. The module is told only an opaque id for each player, so the scoreboard shows the name a player types there, or a few characters of their id.",
   "changelog": [
+    {
+      "version": "0.5.0",
+      "changes": [
+        "A scoreboard of the fastest times on beginner, intermediate and expert. Everyone who played a cleared board gets its time, and a time is only kept when the game replays to a win.",
+        "Players can type a name for the scoreboard; without one they show as a few characters of their id.",
+        "The player who launches a board is its host and can close it to everyone else; only the host reshapes a game in progress, and anyone may start the next one once it is over.",
+        "Needs the data.store approval in the Dock: until an admin approves it Minesweeper does not run."
+      ]
+    },
     {
       "version": "0.4.0",
       "changes": [
@@ -46,8 +55,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/minesweeper/0.4.0/module.wasm",
-    "sha256": "c488f13104eb7045b8cdf1ee243b36578e58419078a2e303b825c4c56e266a90"
+    "path": "modules/minesweeper/0.5.0/module.wasm",
+    "sha256": "5fa7ccecf179038b48696a28fb50f6722647a0474abd82c3a1314ccc39d46a1f"
   },
   "permissions": [
     {
@@ -57,7 +66,8 @@
     }
   ],
   "capabilities": [
-    "command.register"
+    "command.register",
+    "data.store"
   ],
   "extension_points": [
     {
@@ -73,5 +83,57 @@
       "command": "play",
       "description": "Launch a shared Minesweeper board."
     }
-  ]
+  ],
+  "addon_api": 1,
+  "data": {
+    "max_mb": 2,
+    "tables": [
+      {
+        "name": "best",
+        "columns": [
+          {
+            "name": "k",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "lvl",
+            "type": "text",
+            "index": true
+          },
+          {
+            "name": "player",
+            "type": "text"
+          },
+          {
+            "name": "ms",
+            "type": "int",
+            "index": true
+          },
+          {
+            "name": "seed",
+            "type": "int"
+          },
+          {
+            "name": "won_at",
+            "type": "int"
+          }
+        ]
+      },
+      {
+        "name": "names",
+        "columns": [
+          {
+            "name": "player",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "name",
+            "type": "text"
+          }
+        ]
+      }
+    ]
+  }
 }
