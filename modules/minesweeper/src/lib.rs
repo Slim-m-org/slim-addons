@@ -7,8 +7,11 @@
 //! It never traps on bad input; it always answers with
 //! `{"ok":true,"output":...}` or `{"ok":false,"error":...}`.
 
+mod board;
 mod game;
+mod level;
 mod rng;
+mod scene;
 
 use std::alloc::{alloc as std_alloc, Layout};
 
@@ -20,6 +23,9 @@ struct Request {
     input: String,
     #[serde(default)]
     caller: Caller,
+    /// The host's clock when the run started; absent from a host that predates it.
+    #[serde(default)]
+    now_ms: i64,
 }
 
 #[derive(Deserialize, Default)]
@@ -75,7 +81,7 @@ fn handle(request: &[u8]) -> Vec<u8> {
         Err(err) => return serialize_err(format!("invalid request: {err}")),
     };
 
-    match game::apply(&parsed.command, &parsed.input, &parsed.caller.id) {
+    match game::apply(&parsed.command, &parsed.input, &parsed.caller.id, parsed.now_ms) {
         Ok(output) => serialize_ok(output),
         Err(message) => serialize_err(message),
     }

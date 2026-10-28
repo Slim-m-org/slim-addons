@@ -2,10 +2,19 @@
   "schema": 1,
   "id": "minesweeper",
   "name": "Minesweeper",
-  "version": "0.3.0",
-  "summary": "Clear a nine-by-nine board without hitting a mine.",
-  "description": "Launch Minesweeper from the apps menu (or type /minesweeper) and clear the board together - tap to reveal, or switch to flagging to mark a mine. The first tap is always safe. Ten mines in eighty-one cells, and the field is rebuilt from a seed each frame to keep the shared state short. The seed is in that state, so anyone who reads it can work the mines out; this is a game to play together, not one with hidden information. Press 'new game' for a fresh field.",
+  "version": "0.4.0",
+  "summary": "Clear a board without hitting a mine: three sizes or your own, a clock, right-click flags and a win screen.",
+  "description": "Launch Minesweeper from the apps menu (or type /minesweeper) and clear the board together. Tap to reveal, right-click or long-press to flag (or switch to flagging for a finger with no right button). The first tap is always safe, the clock starts on it, and a cleared board shows your time. Pick beginner (9 by 9, 10 mines), intermediate (16 by 16, 40) or expert (30 by 16, 99), or type your own size. The field is rebuilt from a seed each frame to keep the shared state short. The seed is in that state, so anyone who reads it can work the mines out; this is a game to play together, not one with hidden information. Press 'new game' for a fresh field.",
   "changelog": [
+    {
+      "version": "0.4.0",
+      "changes": [
+        "A clock starts on the first tap and stops when the game ends, and a cleared board shows a win card with your time.",
+        "Right-click or long-press flags a cell; the flag mode button stays for a finger with no right button.",
+        "Beginner, intermediate and expert boards, and a custom size typed as columns, rows and mines.",
+        "Boards now draw as one grid, so an expert board fits a shared frame. Games already in progress carry on."
+      ]
+    },
     {
       "version": "0.3.0",
       "changes": [
@@ -37,8 +46,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/minesweeper/0.3.0/module.wasm",
-    "sha256": "e1d04fc9a057c933b29b784b6734832e2e64c8ed25e0fc5ed7a8e2e8d0cd6225"
+    "path": "modules/minesweeper/0.4.0/module.wasm",
+    "sha256": "c488f13104eb7045b8cdf1ee243b36578e58419078a2e303b825c4c56e266a90"
   },
   "permissions": [
     {
