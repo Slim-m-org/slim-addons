@@ -123,10 +123,24 @@ This is worth running on malformed input too. A scene op the client drops does
 not fail loudly anywhere - it just does not draw - which is how three of these
 shipped before the check existed.
 
+### Playing a game through its script
+
+`scripts/play-modules.py` plays each app that keeps a `modules/<id>/play.json` through the real wasm: a list of scenarios, each a list of steps, where a step sends one action the way the client does (the action plus the state the last frame carried) and states what the frame must say.
+It covers a win, a loss, a draw, input that names nothing, a move out of turn, a third player, a double submit, a reload from a saved state, two players answering from one stale board, and a hostile state, and it fails a frame that breaks `check-scene-ops.py` or a run that exhausts the manifest's fuel.
+
+```bash
+python3 scripts/play-modules.py "$R"                      # every script
+python3 scripts/play-modules.py "$R" --only word-guess --show   # one module, printing each frame
+```
+
+The script's own header lists the step and expectation keys, and a misspelt key fails rather than checking nothing.
+`scripts/check-module-tests.py` requires a script for every app, except those listed in `scripts/play-unwritten.txt`, which only shrinks.
+The scripts assert behaviour, not wording, where the wording is not the point: they hold on a refused move that the board and turn did not change.
+
 ## Checks
 
 CI (`.github/workflows/ci.yml`) runs on every pull request and push to main.
-It runs `cargo test` for each module, `scripts/check-wasm-builds.py`, then `scripts/check-catalogue.py`, then `scripts/check-app-scenes.py`, which launches every app and checks the frame for each control, tap target and input its scene offers, as two different callers, then `scripts/check-command-modules.py`, which runs each command-only module through the wasm abi with a fixed input.
+It runs `cargo test` for each module, `scripts/check-wasm-builds.py`, then `scripts/check-catalogue.py`, then `scripts/check-app-scenes.py`, which launches every app and checks the frame for each control, tap target and input its scene offers, as two different callers, then `scripts/check-command-modules.py`, which runs each command-only module through the wasm abi with a fixed input, then `scripts/play-modules.py`, which plays each game through its script.
 Right after the `cargo test` loop, `python3 -m unittest discover -s scripts -p 'test_*.py'` runs the unit tests for these scripts and `cargo test` in `tools/run-module` runs the runner's own; `scripts/check-module-tests.py` fails a module whose `src` has no `#[test]`.
 
 Each module keeps its logic in plain Rust with unit tests, so `cd modules/<id> && cargo test` runs them with no wasm involved.
