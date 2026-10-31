@@ -64,8 +64,8 @@
     {
       "id": "minesweeper",
       "name": "Minesweeper",
-      "version": "0.3.0",
-      "summary": "Clear a nine-by-nine board without hitting a mine."
+      "version": "0.5.0",
+      "summary": "Clear a board together: a clock, right-click flags, three sizes, a win card and a scoreboard of the fastest times."
     },
     {
       "id": "spirograph",
@@ -76,8 +76,8 @@
     {
       "id": "word-guess",
       "name": "Word Guess",
-      "version": "0.1.1",
-      "summary": "Guess a five-letter word in six tries, typing each guess into the scene."
+      "version": "0.2.0",
+      "summary": "One five-letter word a day, the same for everyone, each on their own private board, with a spoiler-free result to post."
     },
     {
       "id": "music-box",
@@ -144,6 +144,12 @@
       "name": "Weather",
       "version": "0.1.0",
       "summary": "Current conditions for any place with /weather Berlin, from Open-Meteo."
+    },
+    {
+      "id": "xp",
+      "name": "XP and levels",
+      "version": "0.1.0",
+      "summary": "Members earn XP for time in voice calls and show a level bar on their profile."
     }
   ]
 }

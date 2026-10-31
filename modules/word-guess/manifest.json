@@ -2,10 +2,20 @@
   "schema": 1,
   "id": "word-guess",
   "name": "Word Guess",
-  "version": "0.1.1",
-  "summary": "Guess a five-letter word in six tries, typing each guess into the scene.",
-  "description": "Launch it from the apps menu. Type a five-letter guess and the tiles colour in: green for a letter in the right place, amber for one that belongs somewhere else, plain for one that is not in the word at all. Six tries, then it tells you the answer. Uses the scene contract's input op, so the guess is typed rather than tapped out on an on-screen keyboard. The answer is derived from a seed rather than stored in the state, which rides the wire on every frame.",
+  "version": "0.2.0",
+  "summary": "One five-letter word a day, the same for everyone, each on their own private board, with a spoiler-free result to post.",
+  "description": "Launch it from the apps menu. There is one word a day, the same for everyone in the space, and everyone plays it on their own board, on their own time: your board is private to you, and nobody else sees your letters. Type a five-letter guess and the tiles colour in: green for a letter in the right place, amber for one that belongs somewhere else, plain for one that is not in the word at all. Six tries a day, then it tells you the answer, and a second launch the same day shows your finished board. Share posts your tries and the tiles as plain text without the word. Practice starts a random board that is not scored, kept for you like the day's. Your guesses are kept in the module's own database (data.store) so a board cannot be replayed, and sharing posts as you (message.post); an admin approves both at install. It needs a server that supports add-on API 2, which adds private scenes.",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "changes": [
+        "One word a day, the same for everyone (by UTC date), played on a board only you see; finishing one does not show anyone else your letters.",
+        "A second launch the same day shows your finished board, and a day cannot be played twice.",
+        "Share posts your tries and the tiles as plain text, without the word; the number of days in a row you have won shows on your board.",
+        "Practice is the old random board, now private to you and not scored.",
+        "Needs add-on API 2 (private scenes) and the data.store and message.post approvals in the Dock."
+      ]
+    },
     {
       "version": "0.1.1",
       "changes": [
@@ -31,8 +41,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/word-guess/0.1.1/module.wasm",
-    "sha256": "45e261f7dbde42d114f5fa20b7c3ee581861214c25b5bec58bd6a8ed3929b67f"
+    "path": "modules/word-guess/0.2.0/module.wasm",
+    "sha256": "cf95a651505be727f0256c9472fd726816f6a2f46e3f71524983c44bfe5dd7bf"
   },
   "permissions": [
     {
@@ -42,7 +52,9 @@
     }
   ],
   "capabilities": [
-    "command.register"
+    "command.register",
+    "data.store",
+    "message.post"
   ],
   "extension_points": [
     {
@@ -58,5 +70,47 @@
       "command": "wordguess",
       "description": "Launch a word guessing game in the channel."
     }
-  ]
+  ],
+  "addon_api": 2,
+  "data": {
+    "max_mb": 4,
+    "tables": [
+      {
+        "name": "plays",
+        "columns": [
+          {
+            "name": "k",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "day",
+            "type": "int",
+            "index": true
+          },
+          {
+            "name": "player",
+            "type": "text",
+            "index": true
+          },
+          {
+            "name": "guesses",
+            "type": "text"
+          },
+          {
+            "name": "done",
+            "type": "int"
+          },
+          {
+            "name": "won",
+            "type": "int"
+          },
+          {
+            "name": "seed",
+            "type": "int"
+          }
+        ]
+      }
+    ]
+  }
 }

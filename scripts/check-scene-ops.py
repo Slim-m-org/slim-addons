@@ -26,12 +26,12 @@ COLOURS = {
     "muted", "text", "border", "danger",
 }
 
-# client/packages/app/lib/src/widgets/module_scene.dart, _parseOp. The value is
+# client/packages/app/lib/src/widgets/module_scene_parse.dart, _parseOp. The value is
 # the set of keys that op actually reads; anything else is ignored, and a key
 # the op needs but does not get makes the whole op vanish.
 OPS = {
-    "cells": {"cols", "rows", "data", "palette", "gap", "tap", "tap_batch", "x", "y", "w", "h"},
-    "rect": {"x", "y", "w", "h", "fill", "grad", "stroke", "sw", "r", "tap", "sweep"},
+    "cells": {"cols", "rows", "data", "palette", "gap", "tap", "alt", "tap_batch", "x", "y", "w", "h"},
+    "rect": {"x", "y", "w", "h", "fill", "grad", "stroke", "sw", "r", "tap", "alt", "sweep"},
     "circle": {"cx", "cy", "r", "fill", "grad", "stroke", "sw", "tap", "sweep"},
     "line": {"x1", "y1", "x2", "y2", "stroke", "sw", "sweep"},
     "text": {"x", "y", "s", "fill", "size", "align", "sweep"},

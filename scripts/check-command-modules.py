@@ -62,11 +62,19 @@ LATER_MS = {("reminder", "due"): 31 * 60_000}
 # Flags a module's commands need beyond the kv file.
 FETCH_FILES = {"weather": root / "scripts" / "fixtures" / "weather-fetch.json"}
 
+# Modules whose commands need a host capability run-module does not simulate; each says what covers them instead.
+NOT_SIMULATED = {
+    "xp": "its commands read data.store and log.read; its unit tests run against an in-memory slim and scripts/e2e-xp.py against a real one",
+}
+
 problems = []
 for manifest in sorted((root / "modules").glob("*/manifest.json")):
     if manifest.parent.name == "_template":
         continue
     m = json.loads(manifest.read_text())
+    if m["id"] in NOT_SIMULATED:
+        print(f"{m['id']}: skipped, {NOT_SIMULATED[m['id']]}")
+        continue
     apps = {e["command"] for e in m["extension_points"] if e["kind"] == "app"}
     for command in sorted({e["name"] for e in m["extension_points"] if e["kind"] == "command"} - apps):
         key = (m["id"], command)
