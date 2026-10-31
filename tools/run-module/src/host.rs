@@ -1,13 +1,17 @@
 //! The one host function slim lets a module import, `slim.host_call`, with the
 //! capabilities behind it: `kv.store` held in memory (`--kv-file` keeps it
 //! between runs), `net.fetch` answered from canned responses (`--fetch-file`,
-//! see `net.rs`), and `message.post` recorded and printed instead of sent. It
-//! is a stand-in for trying a module out: a capability is always approved here.
+//! see `net.rs`), `message.post` recorded and printed instead of sent,
+//! `data.store` held in memory (`data.rs`) and `log.read` served from a file
+//! (`logs.rs`). It is a stand-in for trying a module out: a capability is
+//! always approved here.
 
 use std::collections::BTreeMap;
 
 use wasmi::{Caller, Extern, Linker, Memory};
 
+use crate::data::Data;
+use crate::logs::Logs;
 use crate::net::Canned;
 
 const MAX_KEY_BYTES: usize = 256;
@@ -26,6 +30,10 @@ pub struct Host {
     pub fetch: Option<Canned>,
     /// Every `message.post` content the run made, in order.
     pub posts: Vec<String>,
+    /// The manifest's tables; absent when the module declares none.
+    pub data: Option<Data>,
+    /// The logs `log.read` serves; absent without `--log-file`.
+    pub logs: Option<Logs>,
     calls: u32,
     all_calls: u32,
 }
@@ -72,7 +80,37 @@ pub fn handle(host: &mut Host, request: &str) -> String {
             None => refusal("net.fetch has no canned responses here; pass --fetch-file"),
         },
         Some("message.post") => post(host, request),
+        Some("data.store") => data_store(host, request),
+        Some("log.read") => log_read(host, request),
         _ => refusal("capability not available"),
+    }
+}
+
+/// Spends one of the store calls `kv.store` and `data.store` share; `Some` is the refusal.
+fn spend_store_call(host: &mut Host, capability: &str) -> Option<String> {
+    if host.calls >= MAX_CALLS_PER_RUN {
+        return Some(refusal(&format!("{capability} call budget for this run is exhausted")));
+    }
+    host.calls += 1;
+    None
+}
+
+fn data_store(host: &mut Host, request: &str) -> String {
+    if let Some(refused) = spend_store_call(host, "data.store") {
+        return refused;
+    }
+    let Ok(parsed) = serde_json::from_str(request) else { return refusal("malformed data.store request") };
+    match host.data.as_mut() {
+        Some(data) => data.handle(&parsed).to_string(),
+        None => refusal("this module declared no data; pass --manifest if it is not beside the wasm"),
+    }
+}
+
+fn log_read(host: &Host, request: &str) -> String {
+    let Ok(parsed) = serde_json::from_str(request) else { return refusal("malformed log.read request") };
+    match host.logs.as_ref() {
+        Some(logs) => logs.handle(&parsed).to_string(),
+        None => refusal("log.read has no logs here; pass --log-file"),
     }
 }
 
@@ -94,10 +132,9 @@ fn post(host: &mut Host, request: &str) -> String {
 /// search, no JSON parser) to keep it small; slim's own handler is the
 /// authority on the wire shape.
 fn kv(host: &mut Host, request: &str) -> String {
-    if host.calls >= MAX_CALLS_PER_RUN {
-        return refusal("kv.store call budget for this run is exhausted");
+    if let Some(refused) = spend_store_call(host, "kv.store") {
+        return refused;
     }
-    host.calls += 1;
     let (key, value) = (field(request, "key"), field(request, "value"));
     match (field(request, "op").as_deref(), key, value) {
         (Some("get"), Some(key), _) => match host.kv.get(&key) {
@@ -209,6 +246,25 @@ mod tests {
             call(&mut host, r#"{"capability":"message.post","content":"again"}"#);
         }
         assert!(call(&mut host, r#"{"capability":"message.post","content":"x"}"#).contains("budget"));
+    }
+
+    #[test]
+    fn data_store_and_kv_share_one_budget_of_store_calls() {
+        let manifest = serde_json::json!({"data": {"tables": [{"name": "t", "columns": [{"name": "n", "type": "int"}]}]}});
+        let mut host = Host { data: Data::from_manifest(&manifest), ..Host::default() };
+        let count = r#"{"capability":"data.store","op":"count","table":"t"}"#;
+        for _ in 0..MAX_CALLS_PER_RUN / 2 {
+            assert!(call(&mut host, count).contains(r#""ok":true"#));
+            call(&mut host, r#"{"capability":"kv.store","op":"get","key":"k"}"#);
+        }
+        assert!(call(&mut host, count).contains("budget"));
+        assert!(call(&mut host, r#"{"capability":"kv.store","op":"get","key":"k"}"#).contains("budget"));
+    }
+
+    #[test]
+    fn data_and_logs_say_how_to_get_what_they_lack() {
+        assert!(call(&mut Host::default(), r#"{"capability":"data.store","op":"count","table":"t"}"#).contains("--manifest"));
+        assert!(call(&mut Host::default(), r#"{"capability":"log.read","log":"voice.sessions"}"#).contains("--log-file"));
     }
 
     #[test]

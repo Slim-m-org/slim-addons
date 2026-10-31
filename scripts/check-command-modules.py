@@ -42,6 +42,7 @@ SAMPLES = {
     ("tags", "tag"): ("rules", ""),
     ("tags", "edit"): ("rules Be nice", ""),
     ("tags", "remove"): ("rules", ""),
+    ("xp", "catchup"): ("", "Awarded 2 sessions."),
     ("weather", "now"): ("Berlin", "Berlin, Germany: overcast, 12.3\u00b0C (feels like 10.1\u00b0C), wind 14 km/h"),
 }
 
@@ -59,22 +60,15 @@ SETUP = {
 NOW_MS = 1_700_000_000_000
 # Per command, how much later than NOW_MS it runs.
 LATER_MS = {("reminder", "due"): 31 * 60_000}
-# Flags a module's commands need beyond the kv file.
+# Flags a module's commands need beyond the kv file; data.store comes from the manifest and needs none.
 FETCH_FILES = {"weather": root / "scripts" / "fixtures" / "weather-fetch.json"}
-
-# Modules whose commands need a host capability run-module does not simulate; each says what covers them instead.
-NOT_SIMULATED = {
-    "xp": "its commands read data.store and log.read; its unit tests run against an in-memory slim and scripts/e2e-xp.py against a real one",
-}
+LOG_FILES = {"xp": root / "scripts" / "fixtures" / "xp-log.json"}
 
 problems = []
 for manifest in sorted((root / "modules").glob("*/manifest.json")):
     if manifest.parent.name == "_template":
         continue
     m = json.loads(manifest.read_text())
-    if m["id"] in NOT_SIMULATED:
-        print(f"{m['id']}: skipped, {NOT_SIMULATED[m['id']]}")
-        continue
     apps = {e["command"] for e in m["extension_points"] if e["kind"] == "app"}
     for command in sorted({e["name"] for e in m["extension_points"] if e["kind"] == "command"} - apps):
         key = (m["id"], command)
@@ -84,7 +78,9 @@ for manifest in sorted((root / "modules").glob("*/manifest.json")):
         text, expected = SAMPLES[key]
         wasm = root / m["artifact"]["path"]
         with tempfile.TemporaryDirectory() as scratch:
-            kv = ["--kv-file", f"{scratch}/kv", "--now-ms", str(NOW_MS)]
+            kv = ["--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", "--now-ms", str(NOW_MS)]
+            if m["id"] in LOG_FILES:
+                kv += ["--log-file", str(LOG_FILES[m["id"]])]
             if m["id"] in FETCH_FILES:
                 kv += ["--fetch-file", str(FETCH_FILES[m["id"]])]
             for step, step_input in SETUP.get(key, []):

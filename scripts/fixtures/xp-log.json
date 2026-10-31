@@ -1,0 +1,1 @@
+{"voice.sessions":[{"id":1,"user_id":"alice","channel_id":"c","joined_at_ms":0,"left_at_ms":600000,"alone_ms":0},{"id":2,"user_id":"bob","channel_id":"c","joined_at_ms":0,"left_at_ms":300000,"alone_ms":0}]}
