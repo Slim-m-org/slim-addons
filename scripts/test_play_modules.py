@@ -123,6 +123,21 @@ class RunnerFailureTest(unittest.TestCase):
         self.assertIn("did not finish", found[0][1])
 
 
+class PostsTest(unittest.TestCase):
+    def test_posts_and_output_are_checked_and_a_tick_step_sends_the_tick_marker(self):
+        seen = []
+
+        def runner(caller, payload, now_ms):
+            seen.append((caller, payload))
+            return {"ok": True, "output": "Reminded 1.", "posts": ["@[Gamers] Chess starts in 10 min"]}
+
+        good = {"as": "scheduled", "tick": "remind", "expect": {"output_has": "Reminded 1.", "posts_has": ["Chess starts"], "posts_count": 1}}
+        self.assertEqual(problems([good], runner), [])
+        self.assertEqual(seen, [("scheduled", "@tick:remind")])
+        for wrong in ({"output_has": "Reminded 2."}, {"posts_has": ["Tennis"]}, {"posts_count": 0}):
+            self.assertTrue(problems([{"as": "scheduled", "tick": "remind", "expect": wrong}], runner), wrong)
+
+
 class TypoTest(unittest.TestCase):
     def test_a_misspelt_key_is_a_failure_rather_than_a_check_that_never_ran(self):
         self.assertTrue(problems([{"as": "a1", "do": "go", "expect": {"statuss": "move 1"}}]))

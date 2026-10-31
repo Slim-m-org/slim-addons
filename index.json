@@ -150,6 +150,12 @@
       "name": "XP and levels",
       "version": "0.1.0",
       "summary": "Members earn XP for time in voice calls and show a level bar on their profile."
+    },
+    {
+      "id": "game-night",
+      "name": "Game night",
+      "version": "0.1.0",
+      "summary": "Ping a group, vote on the time that works, say in, maybe or out, and get a reminder before the start."
     }
   ]
 }

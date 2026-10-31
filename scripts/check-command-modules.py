@@ -23,6 +23,7 @@ SAMPLES = {
     ("code-exec", "run"): ("1 + 1", "2"),
     ("cron-explain", "explain"): ("*/15 * * * *", "minute       0, 15, 30, 45\nhour         every hour\n"),
     ("dice", "roll"): ("2d6+3", "2d6+3 = "),
+    ("game-night", "remind"): ("", "Reminded 0."),
     ("hashkit", "sha256"): ("abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
     ("hashkit", "base64"): ("hi", "aGk="),
     ("hashkit", "hex"): ("hi", "6869"),

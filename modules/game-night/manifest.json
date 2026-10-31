@@ -1,0 +1,180 @@
+{
+  "schema": 1,
+  "addon_api": 1,
+  "id": "game-night",
+  "name": "Game night",
+  "version": "0.1.0",
+  "summary": "Ping a group, vote on the time that works, say in, maybe or out, and get a reminder before the start.",
+  "description": "Plan a game night from the apps menu, or type /night Valorant | fri 8pm, sat 9pm | Gamers. The module pings the role you name, lists up to six times to vote on, and collects In, Maybe or Out from each member. The host closes the poll to settle on the time with the most votes, and a reminder goes to the channel shortly before it starts, mentioning the role with a count of who is in. Nights and votes are kept in the module's own small database (data.store); the ping and the reminder are messages posted by the module (message.post), and the timer that sends reminders is a schedule an admin approves when installing. The reminder goes to the channel an admin chose for this module. Members are known to the module only by an opaque id, so it can count answers but cannot list names or mention the people who said they are in.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/game-night/0.1.0/module.wasm",
+    "sha256": "e9ee54f18e90437832972bf144d77d21f5aeb80cbebebe5cd5a191b9fdb24e2c"
+  },
+  "permissions": [
+    {
+      "key": "plan",
+      "name": "Plan game nights",
+      "description": "Plan a game night, vote on its time and answer In, Maybe or Out in this space."
+    },
+    {
+      "key": "remind",
+      "name": "Send reminders by hand",
+      "description": "Send the reminders that are due, now. The timer does this on its own; hardly anyone needs it."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "data.store",
+    "message.post",
+    "schedule"
+  ],
+  "schedules": [
+    {
+      "command": "remind",
+      "every_minutes": 5
+    }
+  ],
+  "data": {
+    "max_mb": 2,
+    "tables": [
+      {
+        "name": "nights",
+        "columns": [
+          {
+            "name": "night_id",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "game",
+            "type": "text"
+          },
+          {
+            "name": "role",
+            "type": "text"
+          },
+          {
+            "name": "host",
+            "type": "text"
+          },
+          {
+            "name": "slots",
+            "type": "text"
+          },
+          {
+            "name": "chosen",
+            "type": "int"
+          },
+          {
+            "name": "remind_at",
+            "type": "int",
+            "index": true
+          },
+          {
+            "name": "reminded",
+            "type": "bool"
+          },
+          {
+            "name": "created",
+            "type": "int",
+            "index": true
+          }
+        ]
+      },
+      {
+        "name": "votes",
+        "columns": [
+          {
+            "name": "vote_key",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "night_id",
+            "type": "text",
+            "index": true
+          },
+          {
+            "name": "voter",
+            "type": "text"
+          },
+          {
+            "name": "kind",
+            "type": "text"
+          },
+          {
+            "name": "val",
+            "type": "int"
+          }
+        ]
+      }
+    ]
+  },
+  "settings": [
+    {
+      "key": "utc_offset_minutes",
+      "type": "int",
+      "label": "Time zone offset",
+      "help": "Minutes ahead of UTC that the times people type are read in.",
+      "default": 0,
+      "min": -720,
+      "max": 840
+    },
+    {
+      "key": "remind_minutes",
+      "type": "int",
+      "label": "Reminder lead",
+      "help": "Minutes before the start that the reminder goes out. Zero turns it off.",
+      "default": 15,
+      "min": 0,
+      "max": 240
+    }
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "night",
+      "permission": "plan",
+      "description": "Plan a game night, or answer one."
+    },
+    {
+      "kind": "slash-command",
+      "name": "night",
+      "permission": "plan",
+      "command": "night",
+      "description": "Plan a game night: /night Valorant | fri 8pm, sat 9pm | Gamers"
+    },
+    {
+      "kind": "app",
+      "name": "Game night",
+      "permission": "plan",
+      "command": "night",
+      "description": "Launch a game night in the channel."
+    },
+    {
+      "kind": "command",
+      "name": "remind",
+      "permission": "remind",
+      "description": "Send the reminders that are due."
+    }
+  ],
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: ping a role, vote on up to six times, answer In, Maybe or Out, and a reminder before the start."
+      ]
+    }
+  ]
+}

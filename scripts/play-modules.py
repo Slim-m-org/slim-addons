@@ -3,8 +3,10 @@
 
 Usage: python3 scripts/play-modules.py <run-module-binary> [--only <module id>] [--show]
 
-A script may set `entropy`, the run's seed (default "play-modules"), so a dealt
-board is the same every run.
+A script, or one scenario in it, may set `entropy`, the run's seed (default
+"play-modules"), so a dealt board is the same every run, and `settings`, values
+for the manifest's settings. A fixed entropy also repeats an id a module derives
+from it, so steps that make two things in one scenario give each its own `now_ms`.
 
 A module with an `app` extension point keeps its play script in
 `modules/<id>/play.json`. A script is a list of scenarios, each a list of steps
@@ -20,12 +22,13 @@ carried), then checks the frame it gets back:
         {"as": "a1", "do": "p1", "state": "@mid"}]}]}
 
 Step keys: `as` (caller id, carried forward), `do` (the action; leave it out for
-the launch frame), `raw` (a literal input, for input that is not a frame at
+the launch frame), `tick` (run a scheduled command instead, as the module's own
+principal), `raw` (a literal input, for input that is not a frame at
 all), `state` (a literal state, or `@name` for one a step saved; otherwise the
 state the last frame carried), `fresh` (send no state), `save`, `now_ms`.
 Expect keys: `ok`, `error_has`, `status`, `status_has`, `controls`,
 `controls_has`, `controls_lack`, `input`, `live`, `taps_has`, `taps_lack`, `text_has`,
-`text_lack`, `state`, `state_has`, `state_unchanged`. `"ok": null` accepts either.
+`text_lack`, `state`, `state_has`, `state_unchanged`, `output_has`, `posts_has`, `posts_count`. `"ok": null` accepts either.
 
 Beyond what a step expects, every frame must pass check-scene-ops and every
 run must finish inside the manifest's fuel, so a hostile state is a failure
@@ -40,9 +43,11 @@ import sys
 import tempfile
 
 root = pathlib.Path(__file__).resolve().parent.parent
-STEP_KEYS = {"as", "do", "raw", "state", "fresh", "save", "now_ms", "expect"}
+STEP_KEYS = {"as", "do", "raw", "state", "fresh", "save", "now_ms", "expect", "tick"}
+TICK = "@tick:"
 EXPECT_KEYS = {"ok", "error_has", "status", "status_has", "controls", "controls_has", "controls_lack", "input", "live",
-               "taps_has", "taps_lack", "text_has", "text_lack", "state", "state_has", "state_unchanged"}
+               "taps_has", "taps_lack", "text_has", "text_lack", "state", "state_has", "state_unchanged", "output_has", "posts_has",
+               "posts_count"}
 DEFAULT_CALLER = "a1"
 DEFAULT_NOW_MS = 1_700_000_000_000
 
@@ -56,7 +61,8 @@ def load_scene_ops():
 
 def summarize(reply):
     """The parts of a reply a step can expect something of; scene is None when it is not a scene."""
-    out = {"ok": reply.get("ok") is True, "error": reply.get("error") or "", "scene": None}
+    out = {"ok": reply.get("ok") is True, "error": reply.get("error") or "", "scene": None,
+           "output": reply.get("output") or "", "posts": reply.get("posts", [])}
     try:
         scene = json.loads(reply.get("output") or "")
     except json.JSONDecodeError:
@@ -87,7 +93,12 @@ def check_expect(got, expect, previous_state):
         problems.append(f"ok is {got['ok']} ({got['error'] or 'no error'}), expected {wanted_ok}")
     if "error_has" in expect and expect["error_has"] not in got["error"]:
         problems.append(f"error {got['error']!r} lacks {expect['error_has']!r}")
-    needs_scene = any(k not in ("ok", "error_has") for k in expect)
+    needs_scene = any(k not in ("ok", "error_has", "output_has", "posts_has", "posts_count") for k in expect)
+    if "output_has" in expect and expect["output_has"] not in got["output"]:
+        problems.append(f"output {got['output']!r} lacks {expect['output_has']!r}")
+    problems += [f"no post with {part!r} in {got['posts']}" for part in listed(expect.get("posts_has", [])) if not any(part in p for p in got["posts"])]
+    if "posts_count" in expect and len(got["posts"]) != expect["posts_count"]:
+        problems.append(f"{len(got['posts'])} posts {got['posts']}, expected {expect['posts_count']}")
     if got["scene"] is None:
         return problems + (["the reply is not a scene"] if needs_scene and got["ok"] else [])
     status, controls = got["status"], got["controls"]
@@ -120,6 +131,8 @@ def check_expect(got, expect, previous_state):
 
 
 def step_payload(step, carried, saved):
+    if "tick" in step:
+        return TICK + step["tick"]
     if "raw" in step:
         return step["raw"]
     if "do" not in step:
@@ -137,7 +150,7 @@ def play_scenario(run, scenario, check_scene):
     found = []
     carried, saved, caller, now_ms = None, {}, DEFAULT_CALLER, scenario.get("now_ms", DEFAULT_NOW_MS)
     for index, step in enumerate(scenario["steps"], 1):
-        label = f"step {index} ({step.get('as', caller)} {step.get('do', step.get('raw', 'launch'))!r:.40})"
+        label = f"step {index} ({step.get('as', caller)} {step.get('tick', step.get('do', step.get('raw', 'launch')))!r:.40})"
         unknown = sorted(set(step) - STEP_KEYS)
         if unknown:
             found.append((label, f"unknown step key {unknown[0]!r}, which nothing would read"))
@@ -160,15 +173,19 @@ def play_scenario(run, scenario, check_scene):
     return found
 
 
-def runner_for(runner, wasm, manifest, scratch, entropy):
+def runner_for(runner, wasm, manifest, scratch, script):
     limits = manifest["runtime"]["limits"]
     timeout = limits.get("wall_ms", 1000) / 1000 * 10 + 10
     # A fixed entropy makes a module that rolls dice or deals a board play the same game every run.
-    env = {**os.environ, "RUN_MODULE_ENTROPY": entropy}
+    env = {**os.environ, "RUN_MODULE_ENTROPY": script.get("entropy", "play-modules")}
+    settings = [arg for key, value in script.get("settings", {}).items() for arg in ("--setting", f"{key}={value}")]
 
     def run(caller, payload, now_ms, command):
-        argv = [runner, "--caller", caller, "--fuel", str(limits["fuel"]), "--now-ms", str(now_ms),
-                "--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", wasm, command, payload]
+        common = ["--fuel", str(limits["fuel"]), "--now-ms", str(now_ms), "--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", *settings]
+        if payload.startswith(TICK):
+            argv = [runner, "--caller", caller, *common, "--tick", payload[len(TICK):], wasm]
+        else:
+            argv = [runner, "--caller", caller, *common, wasm, command, payload]
         try:
             done = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
         except subprocess.TimeoutExpired:
@@ -177,7 +194,9 @@ def runner_for(runner, wasm, manifest, scratch, entropy):
             raise RuntimeError(f"the runner could not start: {err}")
         if done.returncode != 0:
             raise RuntimeError(f"the runner failed: {done.stderr.strip()[:200]}")
-        return json.loads(done.stdout)
+        reply = json.loads(done.stdout)
+        reply["posts"] = [line.split(": ", 1)[1] for line in done.stderr.splitlines() if line.startswith("message.post #")]
+        return reply
 
     return run
 
@@ -189,7 +208,7 @@ def play_module(runner, manifest_path, scene_ops, show):
     results = []
     for scenario in script["scenarios"]:
         with tempfile.TemporaryDirectory() as scratch:
-            run = runner_for(runner, wasm, manifest, scratch, script.get("entropy", "play-modules"))
+            run = runner_for(runner, wasm, manifest, scratch, {**script, **scenario})
 
             def traced(caller, payload, now_ms, run=run):
                 reply = run(caller, payload, now_ms, script["command"])
