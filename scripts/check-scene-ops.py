@@ -101,7 +101,7 @@ def run_module(runner, wasm, command, payload, caller=None):
     if caller is not None:
         argv += ["--caller", caller]
     if "fuel" in limits:
-        argv += ["--fuel", str(limits["fuel"])]
+        argv += ["--fuel", str(int(limits["fuel"]))]
     # The manifest's wall limit with slack for a cold CI runner, so a hang fails rather than stalls.
     timeout = limits.get("wall_ms", 1000) / 1000 * 10 + 10
     try:
