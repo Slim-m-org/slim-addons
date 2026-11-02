@@ -8,7 +8,10 @@ It is the reference module for the module platform's phase 1 contracts: `events`
 - A voice session pays `xp_per_minute` for each whole minute.
   With `only_with_others` on (the default), time alone in the call does not count.
 - A message pays `xp_per_message` at most once per `message_cooldown_s` per member.
-  It is off by default, and bots never earn.
+  It is off by default.
+- Bots never earn, in calls or in messages, and show no level badge or section.
+  This includes a module's own identity, such as `@module-...` in the bots list.
+  A bot's earlier XP stays stored but is never shown.
 - Level 1 starts at zero XP.
   Climbing from level `n` to `n + 1` costs `100 * n` on the standard curve, `50 * n` on gentle and `100 * n * n` on steep.
   The cap is level 999.

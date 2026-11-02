@@ -148,7 +148,7 @@
     {
       "id": "xp",
       "name": "XP and levels",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Members earn XP for time in voice calls and show a level bar on their profile."
     },
     {

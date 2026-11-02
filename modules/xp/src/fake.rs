@@ -40,6 +40,13 @@ impl FakeHost {
         }));
     }
 
+    pub fn push_bot_session(&self, id: i64, user: &str, joined: i64, left: i64) {
+        self.push_session(id, user, joined, left, 0);
+        if let Some(row) = self.log.borrow_mut().last_mut() {
+            row["is_bot"] = json!(true);
+        }
+    }
+
     pub fn xp_of(&self, user: &str) -> i64 {
         self.xp.borrow().iter().find(|r| r["user_id"] == user).map_or(0, |r| r["xp"].as_i64().unwrap())
     }
