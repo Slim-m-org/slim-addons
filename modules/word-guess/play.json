@@ -3,18 +3,17 @@
  "command": "wordguess",
  "scenarios": [
   {
-   "name": "launch is a shared landing with no board on it",
+   "name": "launch is a shared landing with an empty board and the input",
    "steps": [
     {
      "as": "a1",
      "expect": {
       "status": "everyone plays their own board",
       "controls": [
-       "play today",
        "practice"
       ],
       "text_has": [
-       "Word Guess"
+       "Word Guess - day"
       ],
       "input": true
      }
