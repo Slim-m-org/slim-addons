@@ -1,9 +1,6 @@
-# Rename `name` to your module. It only sets the built .wasm filename; the
-# identity that matters is `id` in manifest.json. The package-module.sh script
-# copies whatever .wasm this produces to modules/<id>/<version>/module.wasm.
 [package]
 name = "word-guess"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 publish = false

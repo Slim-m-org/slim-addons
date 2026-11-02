@@ -80,6 +80,32 @@ The scripts below pass the manifest's `runtime.limits.fuel` and a timeout built 
 Without `--fuel` the run is unmetered, and memory is never limited here, so a module that runs here can still be refused there for being too expensive.
 The manifest's `runtime.limits` is the authority on that.
 
+### A reactive module: data, logs, settings, events and slots
+
+A module that keeps `data.store` tables, reads `log.read`, has `settings`, subscribes to events or fills slots runs here too, with no server.
+The runner reads the manifest from beside the wasm (`modules/<id>/manifest.json`), or from `--manifest <path>`, and builds the tables it declares in memory with slim's ops, bounds and refusals (unique columns, 64 store calls shared with `kv.store`, a file cap from `max_mb`).
+`--data-file <path>` keeps the tables between runs.
+
+`log.read` serves the logs in `--log-file <path>`, a JSON object of log name to rows in the order they closed.
+The cursor is the position in that list, as slim's is a close-order cursor and not a row `id`.
+
+```json
+{ "voice.sessions": [{ "id": 1, "user_id": "alice", "channel_id": "c", "joined_at_ms": 0, "left_at_ms": 600000, "alone_ms": 0 }] }
+```
+
+Every run carries `settings`: the manifest's defaults, with `--setting key=value` (repeatable) laid over them and checked against the declared type and range.
+`--event <name> '<data json>'` runs `@event` the way slim delivers a subscribed event, as the module's own principal; it refuses an event the manifest does not subscribe to, and one missing a `data` field.
+`--slot <kind> <name> <user,ids>` runs `@slot` as the viewer `--caller` names, and fails the run when the answer breaks the `slot/1` contract (an unknown node type, no `fallback`, an answer for a member nobody asked about).
+
+```bash
+$R --data-file /tmp/d --log-file sessions.json --tick catchup modules/xp/0.1.0/module.wasm
+$R --data-file /tmp/d --event message.created '{"message_id":"m1","channel_id":"c","author_id":"u","content":"hi","created_at_ms":1700000000000,"is_bot":false}' --setting xp_per_message=3 modules/xp/0.1.0/module.wasm
+$R --data-file /tmp/d --slot member.badge level alice,bob --caller viewer modules/xp/0.1.0/module.wasm
+```
+
+What it does not do: deliver events from a queue, cache a slot answer for 30 seconds, or enforce the wall clock.
+Install on a dev deployment for those (`scripts/e2e-xp.py` plays signed webhooks against a real server).
+
 ### Checking a scene against the renderer
 
 If your module draws, `scripts/check-scene-ops.py` reads its output the way the
@@ -97,10 +123,24 @@ This is worth running on malformed input too. A scene op the client drops does
 not fail loudly anywhere - it just does not draw - which is how three of these
 shipped before the check existed.
 
+### Playing a game through its script
+
+`scripts/play-modules.py` plays each app that keeps a `modules/<id>/play.json` through the real wasm: a list of scenarios, each a list of steps, where a step sends one action the way the client does (the action plus the state the last frame carried) and states what the frame must say.
+It covers a win, a loss, a draw, input that names nothing, a move out of turn, a third player, a double submit, a reload from a saved state, two players answering from one stale board, and a hostile state, and it fails a frame that breaks `check-scene-ops.py` or a run that exhausts the manifest's fuel.
+
+```bash
+python3 scripts/play-modules.py "$R"                      # every script
+python3 scripts/play-modules.py "$R" --only word-guess --show   # one module, printing each frame
+```
+
+The script's own header lists the step and expectation keys, and a misspelt key fails rather than checking nothing.
+`scripts/check-module-tests.py` requires a script for every app, except those listed in `scripts/play-unwritten.txt`, which only shrinks.
+The scripts assert behaviour, not wording, where the wording is not the point: they hold on a refused move that the board and turn did not change.
+
 ## Checks
 
 CI (`.github/workflows/ci.yml`) runs on every pull request and push to main.
-It runs `cargo test` for each module, `scripts/check-wasm-builds.py`, then `scripts/check-catalogue.py`, then `scripts/check-app-scenes.py`, which launches every app and checks the frame for each control, tap target and input its scene offers, as two different callers, then `scripts/check-command-modules.py`, which runs each command-only module through the wasm abi with a fixed input.
+It runs `cargo test` for each module, `scripts/check-wasm-builds.py`, then `scripts/check-catalogue.py`, then `scripts/check-app-scenes.py`, which launches every app and checks the frame for each control, tap target and input its scene offers, as two different callers, then `scripts/check-command-modules.py`, which runs each command-only module through the wasm abi with a fixed input, then `scripts/play-modules.py`, which plays each game through its script.
 Right after the `cargo test` loop, `python3 -m unittest discover -s scripts -p 'test_*.py'` runs the unit tests for these scripts and `cargo test` in `tools/run-module` runs the runner's own; `scripts/check-module-tests.py` fails a module whose `src` has no `#[test]`.
 
 Each module keeps its logic in plain Rust with unit tests, so `cd modules/<id> && cargo test` runs them with no wasm involved.

@@ -1,0 +1,8 @@
+# Apps that had no scripts/play-modules.py script when it was added. Remove a line when its module gets modules/<id>/play.json; never add one.
+checklist
+music-box
+palette
+poll
+spirograph
+tabletop
+tags

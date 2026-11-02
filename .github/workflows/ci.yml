@@ -71,3 +71,5 @@ jobs:
           python3 scripts/check-app-scenes.py target/release/run-module
       - name: Run every command-only module through the wasm abi
         run: python3 scripts/check-command-modules.py target/release/run-module
+      - name: Play every game through its script
+        run: python3 scripts/play-modules.py target/release/run-module

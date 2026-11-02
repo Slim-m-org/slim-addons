@@ -1,0 +1,123 @@
+{
+  "command": "play",
+  "scenarios": [
+    {
+      "name": "launch offers nine squares and no input",
+      "steps": [
+        {"as": "a1", "expect": {"status": "X to move", "controls": ["new game"], "input": false, "taps_has": ["p0", "p4", "p8"]}}
+      ]
+    },
+    {
+      "name": "X wins the top row, then nobody can move",
+      "steps": [
+        {"as": "a1", "do": "p0", "expect": {"status": "O to move", "taps_lack": ["p0"]}},
+        {"as": "b2", "do": "p3", "expect": {"status": "X to move"}},
+        {"as": "a1", "do": "p1"},
+        {"as": "b2", "do": "p4"},
+        {"as": "a1", "do": "p2", "expect": {"status": "X wins"}},
+        {"as": "b2", "do": "p8", "expect": {"status_has": "game is over", "state_unchanged": true}},
+        {"as": "a1", "do": "p8", "expect": {"status_has": "game is over", "state_unchanged": true}}
+      ]
+    },
+    {
+      "name": "O wins on a diagonal",
+      "steps": [
+        {"as": "a1", "do": "p1"},
+        {"as": "b2", "do": "p0"},
+        {"as": "a1", "do": "p2"},
+        {"as": "b2", "do": "p4"},
+        {"as": "a1", "do": "p3"},
+        {"as": "b2", "do": "p8", "expect": {"status": "O wins"}}
+      ]
+    },
+    {
+      "name": "a full board with no line is a draw",
+      "steps": [
+        {"as": "a1", "do": "p0"},
+        {"as": "b2", "do": "p1"},
+        {"as": "a1", "do": "p2"},
+        {"as": "b2", "do": "p4"},
+        {"as": "a1", "do": "p3"},
+        {"as": "b2", "do": "p5"},
+        {"as": "a1", "do": "p7"},
+        {"as": "b2", "do": "p6"},
+        {"as": "a1", "do": "p8", "expect": {"status_has": "draw"}}
+      ]
+    },
+    {
+      "name": "a new game after a win starts clean and keeps the controls",
+      "steps": [
+        {"as": "a1", "do": "p0"},
+        {"as": "b2", "do": "p3"},
+        {"as": "a1", "do": "p1"},
+        {"as": "b2", "do": "p4"},
+        {"as": "a1", "do": "p2", "expect": {"status": "X wins"}},
+        {"as": "b2", "do": "new game", "expect": {"status": "X to move", "controls": ["new game"], "taps_has": ["p0", "p8"]}}
+      ]
+    },
+    {
+      "name": "a move out of turn, onto a taken square, or twice is refused and changes nothing",
+      "steps": [
+        {"as": "a1", "do": "p0", "save": "opened"},
+        {"as": "a1", "do": "p1", "expect": {"status_has": "not your turn", "state_unchanged": true}},
+        {"as": "b2", "do": "p0", "expect": {"status_has": "taken", "state_unchanged": true}},
+        {"as": "a1", "do": "p0", "state": "@opened", "expect": {"state_unchanged": true}}
+      ]
+    },
+    {
+      "name": "a third person watches and cannot move or restart",
+      "steps": [
+        {"as": "a1", "do": "p0"},
+        {"as": "b2", "do": "p4"},
+        {"as": "c3", "do": "p8", "expect": {"status_has": "watching", "state_unchanged": true}},
+        {"as": "c3", "do": "new game", "expect": {"status_has": "only a player", "state_unchanged": true}}
+      ]
+    },
+    {
+      "name": "an unidentified caller cannot move",
+      "steps": [
+        {"as": "not hex!", "do": "p0", "expect": {"status_has": "did not say who you are", "state": ".........|X||"}}
+      ]
+    },
+    {
+      "name": "input that names no square changes nothing",
+      "steps": [
+        {"as": "a1", "do": "p0"},
+        {"as": "b2", "do": "p9", "expect": {"state_unchanged": true}},
+        {"as": "b2", "do": "pX", "expect": {"state_unchanged": true}},
+        {"as": "b2", "do": "", "expect": {"state_unchanged": true}},
+        {"as": "b2", "do": "p-1", "expect": {"state_unchanged": true}},
+        {"as": "b2", "do": "p4", "expect": {"status": "X to move"}}
+      ]
+    },
+    {
+      "name": "reloading a game in progress shows the same board",
+      "steps": [
+        {"as": "a1", "do": "p0"},
+        {"as": "b2", "do": "p4", "save": "mid"},
+        {"as": "a1", "do": "refresh", "state": "@mid", "expect": {"status": "X to move", "state_unchanged": true, "taps_lack": ["p0", "p4"], "taps_has": ["p1"]}},
+        {"as": "a1", "do": "p1", "state": "@mid", "expect": {"status": "O to move"}}
+      ]
+    },
+    {
+      "name": "two players answering from the same stale board: the last frame wins",
+      "steps": [
+        {"as": "a1", "do": "p0", "save": "opened"},
+        {"as": "b2", "do": "p4", "save": "answered"},
+        {"as": "b2", "do": "p8", "state": "@opened", "expect": {"status": "X to move"}},
+        {"as": "a1", "do": "p1", "state": "@answered", "expect": {"status": "O to move"}}
+      ]
+    },
+    {
+      "name": "a hostile or malformed state neither hangs the module nor breaks the scene",
+      "steps": [
+        {"as": "a1", "do": "p0", "state": "not|a|state|at|all", "expect": {"ok": null}},
+        {"as": "a1", "do": "p0", "state": "|||||||||||||||||", "expect": {"ok": null}},
+        {"as": "a1", "do": "p0", "state": "XOXOXOXOX|X|a1|b2|extra|fields", "expect": {"ok": null}},
+        {"as": "a1", "do": "p4", "state": "................................................................................................................................................................................................................................................................................................................................|X||", "expect": {"ok": null}},
+        {"as": "a1", "raw": "not json at all", "expect": {"ok": null}},
+        {"as": "a1", "raw": "{\"action\":42,\"state\":[]}", "expect": {"ok": null}}
+      ]
+    }
+  ]
+}

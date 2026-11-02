@@ -1,8 +1,9 @@
 //! Runs a module the way slim runs it, and prints the JSON it answers with.
 //!
-//! Usage: run-module [--caller <id>] [--fuel <n>] [--kv-file <path>]
-//!                   [--fetch-file <path>] [--now-ms <n>] <module.wasm> <command> [input]
+//! Usage: run-module [options] <module.wasm> <command> [input]
 //!        run-module [options] --tick <command> <module.wasm>
+//!        run-module [options] --event <name> <data-json> <module.wasm>
+//!        run-module [options] --slot <kind> <name> <user,ids> <module.wasm>
 //!
 //! This exists because `scripts/check-scene-ops.py` needs something to drive a
 //! module, and because a module author otherwise has no way to see their own
@@ -15,11 +16,24 @@
 //!   anything else, as slim does - catching an accidental wasi or wasm-bindgen
 //!   dependency here rather than at install time
 //!
-//! `host_call` serves `kv.store`, `net.fetch` and `message.post`, always
-//! approved (see `host.rs`). The store is in memory, and `--kv-file <path>`
-//! keeps it in that file between runs. `net.fetch` answers from the canned
-//! responses in `--fetch-file <path>` (see `net.rs`) and refuses any host that
-//! file does not name. `message.post` is printed to stderr rather than sent.
+//! `host_call` serves `kv.store`, `net.fetch`, `message.post`, `data.store` and
+//! `log.read`, always approved (see `host.rs`). The kv store is in memory, and
+//! `--kv-file <path>` keeps it in that file between runs. `net.fetch` answers
+//! from the canned responses in `--fetch-file <path>` (see `net.rs`) and refuses
+//! any host that file does not name. `message.post` is printed to stderr rather
+//! than sent. `data.store` holds the tables the manifest declares (`data.rs`);
+//! `--data-file <path>` keeps them between runs. `log.read` serves the logs in
+//! `--log-file <path>` (`logs.rs`).
+//!
+//! The manifest is read from beside the wasm (`../manifest.json` of a
+//! `modules/<id>/<version>/module.wasm`), or from `--manifest <path>`. It supplies
+//! the data tables, the `settings` every run carries (defaults, with `--setting
+//! key=value` laid over them), and what `--event` and `--slot` are checked against.
+//!
+//! `--event <name> <data-json>` runs `@event` the way slim delivers a subscribed
+//! event, as the module's own principal. `--slot <kind> <name> <ids>` runs `@slot`
+//! as the viewer `--caller` names, and checks the answer against the `slot/1`
+//! contract (`slot.rs`).
 //!
 //! `--now-ms <n>` sets the request's `now_ms`, the clock a module otherwise has
 //! no way to read; unset, it is this machine's clock. `--tick <command>` runs a
@@ -35,87 +49,24 @@
 //! `runtime.limits` is the authority on those, and the scripts that drive this
 //! tool put a timeout around each run.
 
+mod cli;
+mod data;
+#[cfg(test)]
+mod data_tests;
+mod events;
 mod host;
+mod logs;
 mod net;
+mod settings;
+mod slot;
 
 use std::process::ExitCode;
 
+use serde_json::{json, Value};
 use wasmi::{Config, Engine, Extern, Instance, Linker, Memory, Module, Store};
 
+use cli::{parse_args, Mode, Options};
 use host::Host;
-
-struct Options {
-    path: String,
-    command: String,
-    input: String,
-    caller: Option<String>,
-    fuel: Option<u64>,
-    kv_file: Option<String>,
-    fetch_file: Option<String>,
-    now_ms: Option<i64>,
-    tick: bool,
-}
-
-/// The caller id a scheduled run carries: a module's own principal, not a person.
-const SCHEDULED_CALLER: &str = "scheduled";
-
-fn parse_args(args: &[String]) -> Result<Options, String> {
-    let mut positional = Vec::new();
-    let mut caller = None;
-    let mut fuel = None;
-    let mut kv_file = None;
-    let mut fetch_file = None;
-    let mut now_ms = None;
-    let mut tick = None;
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--caller" => caller = Some(iter.next().ok_or("--caller needs an id")?.clone()),
-            "--fuel" => {
-                let n = iter.next().ok_or("--fuel needs a number")?;
-                fuel = Some(n.parse::<u64>().map_err(|_| format!("--fuel: {n} is not a number"))?);
-            }
-            "--kv-file" => kv_file = Some(iter.next().ok_or("--kv-file needs a path")?.clone()),
-            "--fetch-file" => fetch_file = Some(iter.next().ok_or("--fetch-file needs a path")?.clone()),
-            "--now-ms" => {
-                let n = iter.next().ok_or("--now-ms needs a number")?;
-                now_ms = Some(n.parse::<i64>().map_err(|_| format!("--now-ms: {n} is not a number"))?);
-            }
-            "--tick" => tick = Some(iter.next().ok_or("--tick needs a command")?.clone()),
-            _ => positional.push(arg.clone()),
-        }
-    }
-    let usage = "usage: run-module [--caller <id>] [--fuel <n>] [--kv-file <path>] [--fetch-file <path>] [--now-ms <n>] \
-                 (<module.wasm> <command> [input] | --tick <command> <module.wasm>)";
-    let ticking = tick.is_some();
-    let mut options = match (tick, positional.as_slice()) {
-        (Some(command), [path]) => Options::new(path, &command, "", caller.or_else(|| Some(SCHEDULED_CALLER.to_owned())), fuel),
-        (None, [path, command]) => Options::new(path, command, "", caller, fuel),
-        (None, [path, command, input]) => Options::new(path, command, input, caller, fuel),
-        _ => return Err(usage.to_owned()),
-    };
-    options.kv_file = kv_file;
-    options.fetch_file = fetch_file;
-    options.now_ms = now_ms;
-    options.tick = ticking;
-    Ok(options)
-}
-
-impl Options {
-    fn new(path: &str, command: &str, input: &str, caller: Option<String>, fuel: Option<u64>) -> Self {
-        Options {
-            path: path.into(),
-            command: command.into(),
-            input: input.into(),
-            caller,
-            fuel,
-            kv_file: None,
-            fetch_file: None,
-            now_ms: None,
-            tick: false,
-        }
-    }
-}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -164,14 +115,8 @@ fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
         ));
     }
 
-    let mut store = Store::new(&engine, Host::default());
-    if let Some(path) = &options.kv_file {
-        store.data_mut().kv = host::load(&std::fs::read_to_string(path).unwrap_or_default());
-    }
-    if let Some(path) = &options.fetch_file {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
-        store.data_mut().fetch = Some(net::Canned::parse(&text)?);
-    }
+    let manifest = load_manifest(options)?;
+    let mut store = Store::new(&engine, build_host(options, manifest.as_ref())?);
     if let Some(fuel) = options.fuel {
         store.set_fuel(fuel).map_err(|e| format!("cannot meter the run: {e}"))?;
     }
@@ -182,15 +127,80 @@ fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
         .map_err(|e| format!("cannot instantiate: {e}"))?;
 
     let now_ms = options.now_ms.unwrap_or_else(clock_ms);
-    let request = serde_request(&options.command, &options.input, options.caller.as_deref(), now_ms);
-    let reply = call_run(&mut store, &instance, request.as_bytes());
+    let (command, input) = run_input(options, manifest.as_ref(), now_ms)?;
+    let given = settings::resolve(manifest.as_ref(), &options.settings)?;
+    let request = serde_request(&command, &input, options.caller.as_deref(), (now_ms, given));
+    let reply = call_run(&mut store, &instance, request.as_bytes())?;
     for (n, content) in store.data().posts.iter().enumerate() {
         eprintln!("message.post #{}: {content}", n + 1);
     }
-    if let Some(path) = &options.kv_file {
-        std::fs::write(path, host::dump(&store.data().kv)).map_err(|e| format!("cannot write {path}: {e}"))?;
+    save_state(options, store.data())?;
+    if let Mode::Slot([_, _, ids]) = &options.mode {
+        let problems = slot::check(&reply, &slot::user_ids(ids));
+        if !problems.is_empty() {
+            return Err(format!("{reply}\nthe slot answer breaks the slot/1 contract:\n  {}", problems.join("\n  ")));
+        }
     }
-    reply
+    Ok(reply)
+}
+
+/// The command and input the request carries; events and slots use slim's reserved names.
+fn run_input(options: &Options, manifest: Option<&Value>, now_ms: i64) -> Result<(String, String), String> {
+    match &options.mode {
+        Mode::Command { command, input } => Ok((command.clone(), input.clone())),
+        Mode::Tick(command) => Ok((command.clone(), String::new())),
+        Mode::Event { name, data } => Ok(("@event".to_owned(), events::input(name, data, now_ms, manifest)?)),
+        Mode::Slot(slot) => {
+            let viewer = options.caller.as_deref().unwrap_or("viewer");
+            Ok(("@slot".to_owned(), slot::input(slot, viewer, manifest)?))
+        }
+    }
+}
+
+/// `--manifest`, else the manifest beside a `modules/<id>/<version>/module.wasm`.
+fn load_manifest(options: &Options) -> Result<Option<Value>, String> {
+    let beside = std::path::Path::new(&options.path).parent().and_then(|v| v.parent()).map(|m| m.join("manifest.json"));
+    let (path, explicit) = match (&options.manifest, beside) {
+        (Some(path), _) => (std::path::PathBuf::from(path), true),
+        (None, Some(path)) if path.is_file() => (path, false),
+        _ => return Ok(None),
+    };
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    match serde_json::from_str(&text) {
+        Ok(manifest) => Ok(Some(manifest)),
+        Err(e) if explicit => Err(format!("{} is not JSON: {e}", path.display())),
+        Err(_) => Ok(None),
+    }
+}
+
+fn build_host(options: &Options, manifest: Option<&Value>) -> Result<Host, String> {
+    let read = |path: &str| std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"));
+    let mut host = Host::default();
+    if let Some(path) = &options.kv_file {
+        host.kv = host::load(&std::fs::read_to_string(path).unwrap_or_default());
+    }
+    if let Some(path) = &options.fetch_file {
+        host.fetch = Some(net::Canned::parse(&read(path)?)?);
+    }
+    if let Some(path) = &options.log_file {
+        host.logs = Some(logs::Logs::parse(&read(path)?)?);
+    }
+    host.data = manifest.and_then(data::Data::from_manifest);
+    if let (Some(data), Some(path)) = (host.data.as_mut(), &options.data_file) {
+        data.load(&std::fs::read_to_string(path).unwrap_or_default());
+    }
+    Ok(host)
+}
+
+fn save_state(options: &Options, host: &Host) -> Result<(), String> {
+    let write = |path: &str, text: String| std::fs::write(path, text).map_err(|e| format!("cannot write {path}: {e}"));
+    if let Some(path) = &options.kv_file {
+        write(path, host::dump(&host.kv))?;
+    }
+    match (&host.data, &options.data_file) {
+        (Some(data), Some(path)) => write(path, data.dump()),
+        _ => Ok(()),
+    }
 }
 
 /// This machine's clock in the unit slim's `now_ms` uses: UTC epoch milliseconds.
@@ -200,24 +210,22 @@ fn clock_ms() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
-/// The request shape slim sends: `{"command":..., "input":..., "caller":{"id":...}, "entropy":..., "now_ms":...}`.
+/// The request shape slim sends: `{"command":..., "input":..., "caller":{"id":...}, "entropy":..., "now_ms":..., "settings":{...}}`.
 ///
-/// Hand-built rather than pulling in serde, so this tool stays a single small
-/// dependency on the same engine slim uses and nothing more. slim gives every
-/// run a fresh `entropy`; set `RUN_MODULE_ENTROPY` to send one, and leave it
-/// unset to send none, as a host older than the field would.
-fn serde_request(command: &str, input: &str, caller: Option<&str>, now_ms: i64) -> String {
-    let caller = caller
-        .map(|id| format!(",\"caller\":{{\"id\":\"{}\"}}", escape(id)))
-        .unwrap_or_default();
-    let entropy = std::env::var("RUN_MODULE_ENTROPY")
-        .map(|value| format!(",\"entropy\":\"{}\"", escape(&value)))
-        .unwrap_or_default();
-    format!(
-        "{{\"command\":\"{}\",\"input\":\"{}\"{caller}{entropy},\"now_ms\":{now_ms}}}",
-        escape(command),
-        escape(input)
-    )
+/// slim gives every run a fresh `entropy`; set `RUN_MODULE_ENTROPY` to send one,
+/// and leave it unset to send none, as a host older than the field would.
+fn serde_request(command: &str, input: &str, caller: Option<&str>, (now_ms, settings): (i64, Option<Value>)) -> String {
+    let mut request = json!({"command": command, "input": input, "now_ms": now_ms});
+    if let Some(id) = caller {
+        request["caller"] = json!({"id": id});
+    }
+    if let Ok(entropy) = std::env::var("RUN_MODULE_ENTROPY") {
+        request["entropy"] = json!(entropy);
+    }
+    if let Some(settings) = settings {
+        request["settings"] = settings;
+    }
+    request.to_string()
 }
 
 fn escape(value: &str) -> String {
@@ -303,45 +311,23 @@ mod tests {
         0x09, 0x00, 0x03, 0x40, 0x0c, 0x00, 0x0b, 0x42, 0x00, 0x0b, // code: run loops forever
     ];
 
-    fn args(list: &[&str]) -> Vec<String> {
-        list.iter().map(|s| s.to_string()).collect()
-    }
-
     #[test]
-    fn a_caller_is_put_in_the_request() {
-        let request = serde_request("play", "", Some("al\"ice"), 7);
-        assert_eq!(request, r#"{"command":"play","input":"","caller":{"id":"al\"ice"},"now_ms":7}"#);
-        assert!(!serde_request("play", "", None, 7).contains("caller"));
-    }
-
-    #[test]
-    fn flags_are_read_wherever_they_sit() {
-        let o = parse_args(&args(&["--caller", "u1", "m.wasm", "play", "x", "--fuel", "9"])).unwrap();
-        assert_eq!((o.caller.as_deref(), o.fuel, o.input.as_str()), (Some("u1"), Some(9), "x"));
-        assert!(parse_args(&args(&["--fuel", "many", "m.wasm", "play"])).is_err());
-        assert!(parse_args(&args(&["m.wasm"])).is_err());
-    }
-
-    #[test]
-    fn tick_runs_a_scheduled_command_as_the_modules_own_caller() {
-        let o = parse_args(&args(&["--tick", "digest", "--now-ms", "1700000000000", "m.wasm"])).unwrap();
-        assert_eq!((o.command.as_str(), o.input.as_str(), o.tick), ("digest", "", true));
-        assert_eq!((o.caller.as_deref(), o.now_ms), (Some("scheduled"), Some(1_700_000_000_000)));
-        assert!(parse_args(&args(&["--tick", "digest", "m.wasm", "extra", "args"])).is_err());
-        assert!(parse_args(&args(&["--tick"])).is_err());
-        let o = parse_args(&args(&["--fetch-file", "f.json", "m.wasm", "cmd", "x"])).unwrap();
-        assert_eq!(o.fetch_file.as_deref(), Some("f.json"));
+    fn a_caller_and_settings_are_put_in_the_request() {
+        let request: Value = serde_json::from_str(&serde_request("play", "", Some("al\"ice"), (7, Some(json!({"rate": 5}))))).unwrap();
+        assert_eq!(request, json!({"command": "play", "input": "", "caller": {"id": "al\"ice"}, "now_ms": 7, "settings": {"rate": 5}}));
+        let bare = serde_request("play", "", None, (7, None));
+        assert!(!bare.contains("caller") && !bare.contains("settings"));
     }
 
     #[test]
     fn the_request_carries_a_clock() {
-        assert!(serde_request("c", "", None, 1_700_000_000_000).ends_with(r#","now_ms":1700000000000}"#));
+        assert!(serde_request("c", "", None, (1_700_000_000_000, None)).contains(r#""now_ms":1700000000000"#));
         assert!(clock_ms() > 1_700_000_000_000);
     }
 
     #[test]
     fn a_module_that_loops_forever_runs_out_of_fuel() {
-        let options = Options::new("spin.wasm", "go", "", None, Some(100_000));
+        let options = Options { fuel: Some(100_000), ..Options::command("spin.wasm", "go", "") };
         let err = run_bytes(SPINNER, &options).unwrap_err();
         assert!(err.starts_with("out of fuel"), "{err}");
     }

@@ -23,6 +23,7 @@ SAMPLES = {
     ("code-exec", "run"): ("1 + 1", "2"),
     ("cron-explain", "explain"): ("*/15 * * * *", "minute       0, 15, 30, 45\nhour         every hour\n"),
     ("dice", "roll"): ("2d6+3", "2d6+3 = "),
+    ("game-night", "remind"): ("", "Reminded 0."),
     ("hashkit", "sha256"): ("abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
     ("hashkit", "base64"): ("hi", "aGk="),
     ("hashkit", "hex"): ("hi", "6869"),
@@ -42,6 +43,8 @@ SAMPLES = {
     ("tags", "tag"): ("rules", ""),
     ("tags", "edit"): ("rules Be nice", ""),
     ("tags", "remove"): ("rules", ""),
+    ("xp", "catchup"): ("", "Awarded 2 sessions."),
+    ("word-filter", "filter-test"): ("hello there", "Nothing in that is filtered."),
     ("weather", "now"): ("Berlin", "Berlin, Germany: overcast, 12.3\u00b0C (feels like 10.1\u00b0C), wind 14 km/h"),
 }
 
@@ -59,8 +62,9 @@ SETUP = {
 NOW_MS = 1_700_000_000_000
 # Per command, how much later than NOW_MS it runs.
 LATER_MS = {("reminder", "due"): 31 * 60_000}
-# Flags a module's commands need beyond the kv file.
+# Flags a module's commands need beyond the kv file; data.store comes from the manifest and needs none.
 FETCH_FILES = {"weather": root / "scripts" / "fixtures" / "weather-fetch.json"}
+LOG_FILES = {"xp": root / "scripts" / "fixtures" / "xp-log.json"}
 
 problems = []
 for manifest in sorted((root / "modules").glob("*/manifest.json")):
@@ -76,7 +80,9 @@ for manifest in sorted((root / "modules").glob("*/manifest.json")):
         text, expected = SAMPLES[key]
         wasm = root / m["artifact"]["path"]
         with tempfile.TemporaryDirectory() as scratch:
-            kv = ["--kv-file", f"{scratch}/kv", "--now-ms", str(NOW_MS)]
+            kv = ["--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", "--now-ms", str(NOW_MS)]
+            if m["id"] in LOG_FILES:
+                kv += ["--log-file", str(LOG_FILES[m["id"]])]
             if m["id"] in FETCH_FILES:
                 kv += ["--fetch-file", str(FETCH_FILES[m["id"]])]
             for step, step_input in SETUP.get(key, []):

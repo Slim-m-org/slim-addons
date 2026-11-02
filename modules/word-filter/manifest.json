@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "addon_api": 3,
+  "id": "word-filter",
+  "name": "Word filter",
+  "version": "0.1.0",
+  "summary": "Mask or block the words and patterns you list, before a message is stored.",
+  "description": "Checks every message as it is sent or edited, including bots, webhooks and other modules' posts. List words (matched as whole words, ignoring case) and regex patterns in the settings, then pick what happens: mask replaces each match with asterisks, block refuses the message and shows the sender your reason. Channels you list are left alone. The module sees only the message text and its channel, has no network, storage or posting, and runs inside a small time budget; patterns use a linear-time regex engine and are capped in number and size. If the filter fails, the message goes through unchanged and the failure shows on this page, unless you set the hook to refuse. Use /filter-test to try text against your rules without sending it.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 10000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/word-filter/0.1.0/module.wasm",
+    "sha256": "f54c73914188788da8dff5d7009ac3ce9332447b72f65bda4d445b8fc8a88730"
+  },
+  "permissions": [
+    {
+      "key": "test",
+      "name": "Try the filter",
+      "description": "See what the filter would do with some text, without sending it."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "interceptors"
+  ],
+  "interceptors": [
+    {
+      "hook": "message.pre_send",
+      "phase": "reject",
+      "reads": [
+        "content",
+        "channel_id"
+      ]
+    },
+    {
+      "hook": "message.pre_send",
+      "phase": "rewrite",
+      "reads": [
+        "content",
+        "channel_id"
+      ]
+    },
+    {
+      "hook": "message.pre_edit",
+      "phase": "reject",
+      "reads": [
+        "content",
+        "channel_id"
+      ]
+    },
+    {
+      "hook": "message.pre_edit",
+      "phase": "rewrite",
+      "reads": [
+        "content",
+        "channel_id"
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "key": "words",
+      "type": "string",
+      "label": "Words",
+      "help": "Up to 100, separated by commas or new lines. Matched as whole words or phrases, ignoring case.",
+      "default": ""
+    },
+    {
+      "key": "patterns",
+      "type": "string",
+      "label": "Patterns",
+      "help": "Up to 5 regexes, one per line, ignoring case. Use + and * rather than large {n,m} counts.",
+      "default": ""
+    },
+    {
+      "key": "action",
+      "type": "choice",
+      "label": "When something matches",
+      "help": "Mask replaces the match with asterisks. Block refuses the whole message.",
+      "default": "mask",
+      "choices": [
+        {
+          "value": "mask",
+          "label": "Mask it"
+        },
+        {
+          "value": "block",
+          "label": "Block the message"
+        }
+      ]
+    },
+    {
+      "key": "block_reason",
+      "type": "string",
+      "label": "Block reason",
+      "help": "What the sender sees when a message is blocked.",
+      "default": "That message has a word this server filters."
+    },
+    {
+      "key": "exempt_channels",
+      "type": "string",
+      "label": "Exempt channels",
+      "help": "Channel ids the filter skips, separated by commas.",
+      "default": ""
+    }
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "filter-test",
+      "permission": "test",
+      "description": "Show what the filter would do with some text."
+    },
+    {
+      "kind": "slash-command",
+      "name": "filter-test",
+      "permission": "test",
+      "command": "filter-test",
+      "description": "Try text against the filter without sending it."
+    }
+  ]
+}
