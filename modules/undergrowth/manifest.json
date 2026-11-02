@@ -1,0 +1,376 @@
+{
+  "schema": 1,
+  "addon_api": 3,
+  "id": "undergrowth",
+  "name": "Undergrowth",
+  "version": "0.1.0",
+  "summary": "A fungal turf war living under your space: messages fall as leaves, reactions bring rain, calls bring warmth, and up to six colonies grow, fight and fruit mushrooms that sing.",
+  "description": "Launch Undergrowth from the apps menu and press join to root a colony in a procedurally dealt slab of soil. Tap the soil to lure your hyphae toward it, drag to lay a trail, and long press (or right click) your own hyphae to fruit a mushroom. Hyphae drink nutrients, harden with age, outnumber and take a rival's cells, and die back when they are cut off from their heart or an outpost, so cutting a rival's network is a strategy. Mushrooms score while they stand, throw spores that root new outposts, and are the notes of the song button. The world keeps moving on its own while people watch, and the space feeds it: every message posted in a channel the module can see drops a leaf of nutrients into the topsoil, a reaction brings rain that speeds growth, time spent in calls brings a warm spell, and someone joining the space stirs a wild rot nobody plays. My colony opens a private panel with your stats, a portrait of your network, bursts and spore shots. A season ends after a set time; the results go to the module's channel and a short almanac is posted once a day. Members who choose to link their profile see their record on it. It keeps its moves, weather and records in its own database (data.store), listens for messages, reactions, joins and calls (events), reads finished calls so none is counted twice (log.read), and posts results on a timer (schedule and message.post); an admin approves each when installing.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 32,
+      "wall_ms": 3000,
+      "fuel": 600000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/undergrowth/0.1.0/module.wasm",
+    "sha256": "7b81359c35fe9db5e94af504d22509adbb3f3eac8351add469bb3fc3a62775b5"
+  },
+  "permissions": [
+    {
+      "key": "play",
+      "name": "Play Undergrowth",
+      "description": "Launch Undergrowth, grow a colony and fruit mushrooms in this space."
+    },
+    {
+      "key": "tend",
+      "name": "Tend Undergrowth by hand",
+      "description": "Post the season results or the almanac now. The timers do this on their own; hardly anyone needs it."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "data.store",
+    "events",
+    "log.read",
+    "schedule",
+    "message.post"
+  ],
+  "schedules": [
+    {
+      "command": "almanac",
+      "every_minutes": 1440
+    }
+  ],
+  "subscriptions": [
+    {
+      "event": "message.created"
+    },
+    {
+      "event": "reaction.changed"
+    },
+    {
+      "event": "member.joined"
+    },
+    {
+      "event": "voice.session.closed"
+    }
+  ],
+  "data": {
+    "max_mb": 16,
+    "tables": [
+      {
+        "name": "moves",
+        "columns": [
+          {
+            "name": "game",
+            "type": "text",
+            "index": true
+          },
+          {
+            "name": "pid",
+            "type": "text"
+          },
+          {
+            "name": "act",
+            "type": "text"
+          },
+          {
+            "name": "arg",
+            "type": "text"
+          },
+          {
+            "name": "at_ms",
+            "type": "int",
+            "index": true
+          }
+        ]
+      },
+      {
+        "name": "inbox",
+        "columns": [
+          {
+            "name": "kind",
+            "type": "text"
+          },
+          {
+            "name": "at",
+            "type": "int"
+          },
+          {
+            "name": "amount",
+            "type": "int"
+          },
+          {
+            "name": "at_ms",
+            "type": "int",
+            "index": true
+          }
+        ]
+      },
+      {
+        "name": "games",
+        "columns": [
+          {
+            "name": "game",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "season",
+            "type": "int"
+          },
+          {
+            "name": "tick",
+            "type": "int"
+          },
+          {
+            "name": "end_tick",
+            "type": "int"
+          },
+          {
+            "name": "ended",
+            "type": "int"
+          },
+          {
+            "name": "posted",
+            "type": "int"
+          },
+          {
+            "name": "standings",
+            "type": "text"
+          },
+          {
+            "name": "updated_ms",
+            "type": "int",
+            "index": true
+          }
+        ]
+      },
+      {
+        "name": "players",
+        "columns": [
+          {
+            "name": "pid",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "name",
+            "type": "text"
+          },
+          {
+            "name": "seasons",
+            "type": "int"
+          },
+          {
+            "name": "wins",
+            "type": "int"
+          },
+          {
+            "name": "best_cells",
+            "type": "int"
+          },
+          {
+            "name": "mushrooms",
+            "type": "int"
+          },
+          {
+            "name": "user_id",
+            "type": "text",
+            "index": true,
+            "member": true
+          },
+          {
+            "name": "last_ms",
+            "type": "int"
+          }
+        ]
+      },
+      {
+        "name": "links",
+        "columns": [
+          {
+            "name": "code",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "pid",
+            "type": "text"
+          },
+          {
+            "name": "at_ms",
+            "type": "int"
+          }
+        ]
+      },
+      {
+        "name": "feeders",
+        "columns": [
+          {
+            "name": "user_id",
+            "type": "text",
+            "unique": true,
+            "member": true
+          },
+          {
+            "name": "leaves",
+            "type": "int",
+            "index": true
+          },
+          {
+            "name": "warm_min",
+            "type": "int"
+          }
+        ]
+      },
+      {
+        "name": "facts",
+        "columns": [
+          {
+            "name": "name",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "val",
+            "type": "text"
+          },
+          {
+            "name": "num",
+            "type": "int"
+          }
+        ]
+      }
+    ]
+  },
+  "settings": [
+    {
+      "key": "world",
+      "type": "choice",
+      "label": "World size",
+      "help": "How big a new season's soil is.",
+      "default": "medium",
+      "choices": [
+        {
+          "value": "small",
+          "label": "Small, 48 by 30"
+        },
+        {
+          "value": "medium",
+          "label": "Medium, 64 by 40"
+        },
+        {
+          "value": "large",
+          "label": "Large, 96 by 60"
+        },
+        {
+          "value": "huge",
+          "label": "Huge, 128 by 80"
+        }
+      ]
+    },
+    {
+      "key": "tick_ms",
+      "type": "int",
+      "label": "Tick length",
+      "help": "Milliseconds of real time per tick of the world.",
+      "default": 400,
+      "min": 150,
+      "max": 5000
+    },
+    {
+      "key": "season_ticks",
+      "type": "int",
+      "label": "Season length",
+      "help": "Ticks in a season.",
+      "default": 2400,
+      "min": 200,
+      "max": 50000
+    },
+    {
+      "key": "redraw_s",
+      "type": "int",
+      "label": "Redraw every",
+      "help": "Seconds between redraws while people are watching.",
+      "default": 3,
+      "min": 2,
+      "max": 60
+    },
+    {
+      "key": "leaf_power",
+      "type": "int",
+      "label": "Leaf richness",
+      "help": "Nutrients one message adds to the topsoil.",
+      "default": 3,
+      "min": 0,
+      "max": 8
+    },
+    {
+      "key": "wild_rot",
+      "type": "bool",
+      "label": "Wild rot",
+      "help": "Someone joining the space wakes a colony nobody plays.",
+      "default": true
+    },
+    {
+      "key": "almanac",
+      "type": "bool",
+      "label": "Daily almanac",
+      "help": "Post a short summary of the day once a day.",
+      "default": true
+    }
+  ],
+  "slots": [
+    {
+      "kind": "profile.section",
+      "name": "grove",
+      "title": "Undergrowth"
+    },
+    {
+      "kind": "member.badge",
+      "name": "champion"
+    }
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "undergrowth",
+      "permission": "play",
+      "description": "Launch an Undergrowth season, or play a move in one."
+    },
+    {
+      "kind": "app",
+      "name": "Undergrowth",
+      "permission": "play",
+      "command": "undergrowth",
+      "description": "Launch a living fungal turf war in the channel."
+    },
+    {
+      "kind": "command",
+      "name": "herald",
+      "permission": "tend",
+      "description": "Post the results of a finished season."
+    },
+    {
+      "kind": "command",
+      "name": "almanac",
+      "permission": "tend",
+      "description": "Post the day's almanac and tidy old records."
+    }
+  ],
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: a shared fungal world with up to six colonies, weather fed by the space's messages, reactions, joins and calls, a private colony panel with a rendered portrait, mushroom songs, season results and a daily almanac."
+      ]
+    }
+  ]
+}
