@@ -20,7 +20,7 @@ pub struct FakeHost {
 }
 
 fn matches(row: &Row, filters: &Value) -> bool {
-    filters.as_array().map_or(true, |all| {
+    filters.as_array().is_none_or(|all| {
         all.iter().all(|f| {
             assert_eq!(f["op"], "eq", "the fake only does eq");
             row[f["col"].as_str().unwrap()] == f["val"]

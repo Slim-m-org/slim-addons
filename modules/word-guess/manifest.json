@@ -4,13 +4,13 @@
   "name": "Word Guess",
   "version": "0.2.1",
   "summary": "One five-letter word a day, the same for everyone, each on their own private board, with a spoiler-free result to post.",
-  "description": "Launch it from the apps menu. There is one word a day, the same for everyone in the space, and everyone plays it on their own board, on their own time: your board is private to you, and nobody else sees your letters. Type a five-letter guess and the tiles colour in: green for a letter in the right place, amber for one that belongs somewhere else, plain for one that is not in the word at all. Six tries a day, then it tells you the answer, and a second launch the same day shows your finished board. Share posts your tries and the tiles as plain text without the word. Practice starts a random board that is not scored, kept for you like the day's. Your guesses are kept in the module's own database (data.store) so a board cannot be replayed, and sharing posts as you (message.post); an admin approves both at install. It needs a server that supports add-on API 2, which adds private scenes.",
+  "description": "Launch it from the apps menu. There is one word a day, the same for everyone in the space, and everyone plays it on their own board, on their own time: your board is private to you, and nobody else sees your letters. Launching shows an empty board with the guess field on it: type a five-letter word to start today's puzzle, or press my board to get back to yours, finished or not. The tiles colour in: green for a letter in the right place, amber for one that belongs somewhere else, an outlined dark tile for one that is not in the word. Six tries a day, then it tells you the answer. Share posts your tries and the tiles as plain text without the word. Practice starts a random board that is not scored, kept for you like the day's. Your guesses are kept in the module's own database (data.store) so a board cannot be replayed, and sharing posts as you (message.post); an admin approves both at install. It needs a server that supports add-on API 2, which adds private scenes.",
   "changelog": [
     {
       "version": "0.2.1",
       "changes": [
         "Days are numbered from the launch (day 1 is 1 November 2026) instead of counting from 1970.",
-        "Launching shows an empty board with the guess field right on it; typing a word starts today's puzzle, and practice is the one other button.",
+        "Launching shows an empty board with the guess field right on it; typing a word starts today's puzzle, and my board and practice are the two other buttons.",
         "Clearer tiles: empty tiles are outlined, right and misplaced letters have their own letter colours, and the board has a title."
       ]
     },
@@ -50,7 +50,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/word-guess/0.2.1/module.wasm",
-    "sha256": "0c27de55a6522c42b5779d63916880e6cfbe808b8aaacf55acacfa32d4856fb2"
+    "sha256": "bfa2f935e959457385a5300fb26a3f6828ec77a628ddcfb946860bcd8e2e0896"
   },
   "permissions": [
     {

@@ -216,12 +216,24 @@ mod tests {
         let host = FakeHost::default();
         let launched: Value = serde_json::from_str(&apply(&host, "wordguess", "", &run("ann", NOON)).unwrap()).unwrap();
         assert!(launched.get("private").is_none());
-        assert_eq!(launched["controls"], json!(["practice"]));
+        assert_eq!(launched["controls"], json!(["my board", "practice"]));
         assert_eq!(host.calls.get(), 0, "the landing needs nothing from the host");
         for action in ["close", "nonsense", ""] {
             assert!(act(&host, action, "ann", NOON).get("private").is_none(), "{action}");
         }
         assert!(apply(&host, "nope", "", &run("ann", NOON)).is_err());
+    }
+
+    #[test]
+    fn a_mid_game_player_opens_their_board_from_the_landing_without_losing_a_try() {
+        let host = FakeHost::default();
+        act(&host, &format!("guess:{}", wrong_word()), "ann", NOON);
+        let landing = act(&host, "", "ann", NOON + 1_000);
+        assert!(landing["controls"].as_array().unwrap().contains(&json!("my board")));
+        let mine = act(&host, "my board", "ann", NOON + 2_000);
+        assert_eq!(mine["private"], true);
+        assert_eq!(letters(&mine), wrong_word().to_uppercase());
+        assert!(mine["status"].as_str().unwrap().starts_with("1 of 6"), "{}", mine["status"]);
     }
 
     #[test]
@@ -311,7 +323,7 @@ mod tests {
         assert_eq!(shared["status"], "posted to the channel");
         let posts = host.posts.borrow();
         assert_eq!(posts.len(), 1);
-        assert!(posts[0].starts_with(&format!("Word Guess day 1 2/6")), "{}", posts[0]);
+        assert!(posts[0].starts_with(&format!("Word Guess day {} 2/6", game_day(DAY))), "{}", posts[0]);
         assert!(!posts[0].to_lowercase().contains(answer_for(DAY)));
         assert!(posts[0].contains("#####"));
     }

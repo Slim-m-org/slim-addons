@@ -7,7 +7,7 @@ use crate::game::{score, Game, Mark, LENGTH, TRIES};
 /// Green and amber are hex rather than theme tokens because the palette has no pair for "right"
 /// and "nearly", and a guessing game where those two are not instantly distinguishable is not
 /// playable. Everything else in the scene stays on tokens.
-const RIGHT: &str = "#4f9d69";
+const RIGHT: &str = "#3f8a59";
 const MOVED: &str = "#e3b341";
 const ABSENT: &str = "sunken";
 const EMPTY: &str = "surface";
@@ -18,7 +18,7 @@ const ON_MOVED: &str = "#1f1f1f";
 /// The epoch day Word Guess first shipped on (2026-11-01); it is day 1.
 const LAUNCH_DAY: i64 = 20_758;
 
-const SCENE_HEIGHT: f64 = 110.0;
+const SCENE_HEIGHT: f64 = 102.0;
 const BOARD_TOP: f64 = 13.0;
 const INPUT_Y: f64 = 89.0;
 
@@ -109,7 +109,7 @@ pub fn render_landing(day: i64) -> String {
     json!({
         "$slim": "scene/1", "width": 100, "height": SCENE_HEIGHT, "background": "surface",
         "ops": ops,
-        "controls": ["practice"],
+        "controls": ["my board", "practice"],
         "status": "everyone plays their own board",
         "live": true,
     })
@@ -171,7 +171,7 @@ mod tests {
         assert!(scene.get("private").is_none(), "the landing is what everyone sees");
         let texts: Vec<&str> = scene["ops"].as_array().unwrap().iter().filter_map(|o| o["s"].as_str()).collect();
         assert!(texts.contains(&"Word Guess - day 1"));
-        assert_eq!(scene["controls"], json!(["practice"]));
+        assert_eq!(scene["controls"], json!(["my board", "practice"]));
         let ops = scene["ops"].as_array().unwrap();
         assert_eq!(ops.iter().filter(|o| o["op"] == "rect").count(), TRIES * LENGTH, "an empty board to type into");
         assert!(ops.iter().any(|o| o["op"] == "input" && o["submit"] == "guess"));

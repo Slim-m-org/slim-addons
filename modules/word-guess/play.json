@@ -10,11 +10,33 @@
      "expect": {
       "status": "everyone plays their own board",
       "controls": [
+       "my board",
        "practice"
       ],
       "text_has": [
        "Word Guess - day"
       ],
+      "input": true
+     }
+    }
+   ],
+   "now_ms": 1700000000000
+  },
+  {
+   "name": "my board brings a mid-game player back to their own board without spending a try",
+   "steps": [
+    {
+     "as": "a1",
+     "do": "guess:slate",
+     "expect": {
+      "status_has": "1 of 6"
+     }
+    },
+    {
+     "as": "a1",
+     "do": "my board",
+     "expect": {
+      "status_has": "1 of 6 tries used",
       "input": true
      }
     }

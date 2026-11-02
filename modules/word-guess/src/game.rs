@@ -47,7 +47,7 @@ impl Game {
             self.refused = Some(format!("{LENGTH} letters, a to z"));
             return false;
         }
-        if self.guesses.iter().any(|g| *g == word) {
+        if self.guesses.contains(&word) {
             self.refused = Some("already guessed".to_owned());
             return false;
         }
