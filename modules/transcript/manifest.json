@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "addon_api": 4,
+  "id": "transcript",
+  "name": "Call transcript",
+  "version": "0.1.0",
+  "summary": "Writes down a call everyone agreed to be heard in and posts the transcript when it ends.",
+  "description": "When everyone in a call you have chosen agrees, this writes down what is said and posts the transcript to a channel when the call ends. It hears nothing until an admin picks the calls it may hear, and it never gets audio: your server turns speech into text and hands over only the text. It keeps the text in its own small database (data.store) for as long as you set, posts as itself (message.post) in the channel you choose for it (schedule), and tidies up old transcripts once a day. An admin approves each when installing.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/transcript/0.1.0/module.wasm",
+    "sha256": "497a23754b6801f1fe56897e78f4a4830001627156feeefb4a0240d692e4ce27"
+  },
+  "permissions": [
+    {
+      "key": "start",
+      "name": "Turn on call transcripts",
+      "description": "Ask everyone in a call to let the transcript module write it down."
+    },
+    {
+      "key": "tidy",
+      "name": "Tidy transcripts by hand",
+      "description": "Close silent calls and prune old transcripts now. The timer does this on its own; hardly anyone needs it."
+    },
+    {
+      "key": "post",
+      "name": "Post the rest of a transcript",
+      "description": "Used by the module itself to post a long transcript in parts. Nobody needs this."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "call.audio",
+    "data.store",
+    "message.post",
+    "schedule"
+  ],
+  "call_audio": {
+    "purpose": "Writes down what is said in the call and posts the transcript when the call ends.",
+    "keeps": "The transcript text, in this module's own data, for 30 days unless an admin changes it.",
+    "permission": "start"
+  },
+  "schedules": [
+    {
+      "command": "tidy",
+      "every_minutes": 15
+    }
+  ],
+  "data": {
+    "max_mb": 16,
+    "tables": [
+      {
+        "name": "sessions",
+        "columns": [
+          {
+            "name": "session_id",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "channel_id",
+            "type": "text"
+          },
+          {
+            "name": "started_ms",
+            "type": "int"
+          },
+          {
+            "name": "stopped_ms",
+            "type": "int",
+            "index": true
+          },
+          {
+            "name": "reason",
+            "type": "text"
+          },
+          {
+            "name": "segments_sent",
+            "type": "int"
+          },
+          {
+            "name": "last_event_ms",
+            "type": "int"
+          },
+          {
+            "name": "cursor",
+            "type": "int"
+          },
+          {
+            "name": "speakers",
+            "type": "text"
+          },
+          {
+            "name": "posted",
+            "type": "int"
+          },
+          {
+            "name": "ended",
+            "type": "int",
+            "index": true
+          }
+        ]
+      },
+      {
+        "name": "segments",
+        "columns": [
+          {
+            "name": "session_id",
+            "type": "text",
+            "index": true
+          },
+          {
+            "name": "segment_id",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "user_id",
+            "type": "text",
+            "member": true
+          },
+          {
+            "name": "start_ms",
+            "type": "int"
+          },
+          {
+            "name": "end_ms",
+            "type": "int"
+          },
+          {
+            "name": "body",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "meta",
+        "columns": [
+          {
+            "name": "name",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "val",
+            "type": "int"
+          }
+        ]
+      }
+    ]
+  },
+  "settings": [
+    {
+      "key": "keep_days",
+      "type": "int",
+      "label": "Keep for days",
+      "help": "Finished transcripts are removed after this many days.",
+      "default": 30,
+      "min": 1,
+      "max": 365
+    },
+    {
+      "key": "post_when_done",
+      "type": "bool",
+      "label": "Post when done",
+      "help": "Post the transcript to the channel when the call ends.",
+      "default": true
+    }
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "tidy",
+      "permission": "tidy",
+      "description": "Close silent calls and prune old transcripts."
+    },
+    {
+      "kind": "command",
+      "name": "post",
+      "permission": "post",
+      "description": "Post the rest of a long transcript."
+    }
+  ],
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: writes down a call everyone agreed to be heard in and posts the transcript when it ends."
+      ]
+    }
+  ]
+}
