@@ -45,7 +45,8 @@ pub struct Answer {
 
 pub fn surface<H: Host>(store: &Store<H>, input: &str, run: &Run) -> Answer {
     let press: Value = serde_json::from_str(input.trim()).unwrap_or(Value::Null);
-    let state = press["state"].as_str();
+    // Slim swaps in the stored board only when the input has an `action` key; without one the state is the client's own.
+    let state = press.get("action").and(press["state"].as_str());
     let Some((game, world)) = state.and_then(Game::decode) else {
         let why = state.map(|_| "that board could not be read, so fresh soil was dealt");
         return launch(store, run, why);

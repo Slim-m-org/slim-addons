@@ -352,8 +352,9 @@ fn a_malformed_action_on_a_real_board_redraws_it_and_resets_nothing() {
         let pids = |g: &Game| g.c.iter().map(|c| c.pid.clone()).collect::<Vec<_>>();
         assert_eq!(pids(&after), pids(&before), "{action}");
     }
-    let (bare, _) = decoded(&scene(&call(&host, "undergrowth", "mallory", &json!({"state": s}).to_string(), T0 + 20, json!({}))));
-    assert_eq!((bare.g, bare.c.len()), (before.g, 2), "a press with a board and no action keeps it too");
+    let forged = scene(&call(&host, "undergrowth", "mallory", &json!({"state": s}).to_string(), T0 + 20, json!({})));
+    assert!(decoded(&forged).0.c.is_empty(), "a state with no action key is not slim's stored board, so it is not trusted");
+    assert!(forged["status"].as_str().unwrap().starts_with("fresh soil"), "{}", forged["status"]);
 }
 
 /// Two players join and the clock runs until the season ends; the finished frame and the time.

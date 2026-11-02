@@ -35,7 +35,7 @@ So a press never edits the board directly: it is inserted into the `moves` table
 Whichever frame slim keeps, the next one replays whatever it missed.
 **new season** is a move too, carrying the season it starts, and its soil is seeded from the move's id, so every frame that replays it deals the same soil.
 A finished season's final standings are written by the same conditional update that claims its end, so the posted results match the recorded ones, and a slower frame cannot write over them.
-A press whose action is not a string still gets the stored board and only redraws it; only a press with no board deals fresh soil.
+A press whose action is not a string still gets the stored board and only redraws it; a press with no `action` key is a launch, because slim only swaps in the stored board when the key is there.
 The same cursor pattern reads the `inbox` the events fill, so every running game gets each leaf once.
 
 ## The space feeding the soil
