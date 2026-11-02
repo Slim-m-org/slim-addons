@@ -16,7 +16,7 @@ It is meant to push the module platform: a shared scene that runs in real time, 
   Cells cut off from their heart and every outpost wither, so cutting a rival's network is a strategy.
 - A colony that cannot pay its upkeep dies back, so swallowing half the soil is not a safe place to sit.
 - **my colony** opens a panel only you see: your numbers, a rendered portrait of your network, a name field, **burst** (30 energy, a growth surge) and **spore shot** (60, an outpost at your last waypoint).
-- **song** plays every standing mushroom, left to right, with a playhead across the soil.
+- **song** plays up to 32 standing mushrooms, spread across the soil, left to right, with a playhead sweeping it.
   Sound only plays for the person who pressed.
 - A season ends after a set number of ticks.
   The results are posted to the module's channel once, and **new season** deals fresh soil and roots everyone again.
@@ -33,6 +33,9 @@ On a shared surface slim hands every press the state of the last frame it stored
 Two presses on the same frame would each build on it and one would vanish.
 So a press never edits the board directly: it is inserted into the `moves` table, and every frame replays the moves after the last one its board has taken in, including its own.
 Whichever frame slim keeps, the next one replays whatever it missed.
+**new season** is a move too, carrying the season it starts, and its soil is seeded from the move's id, so every frame that replays it deals the same soil.
+A finished season's final standings are written by the same conditional update that claims its end, so the posted results match the recorded ones, and a slower frame cannot write over them.
+A press whose action is not a string still gets the stored board and only redraws it; only a press with no board deals fresh soil.
 The same cursor pattern reads the `inbox` the events fill, so every running game gets each leaf once.
 
 ## The space feeding the soil
@@ -88,6 +91,12 @@ Leaves and call time show on every member's profile with no linking, since those
 
 Measured with `run-module --fuel`, on crowded boards; the manifest allows 600M fuel and 3 s.
 A stored frame may be 64 KiB, so the huge world is the largest this state format carries.
+
+Two paths in slim itself can still lose the board, and the module cannot guard against either:
+
+- slim hands a press the stored state only when its input has an `action` key, so a run posted with input `""` or `"{}"` on a board that already exists reaches the module as a launch and deals fresh soil.
+- A press that fails on the host (the shared run slots stay busy past their wait, the time limit is hit, or the module crashes) is stored as the frame, so the next press gets no state and deals fresh soil.
+  Six players running the play loop on a huge world, or other modules sharing the run slots, make this more likely.
 
 ## Layout
 

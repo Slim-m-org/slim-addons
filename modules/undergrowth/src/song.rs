@@ -17,15 +17,17 @@ fn note(f: f32, t: f32, d: f32) -> Value {
     json!({"f": (f * 10.0).round() / 10.0, "t": (t * 100.0).round() / 100.0, "d": d})
 }
 
-/// Every mushroom sings once as a playhead sweeps the soil left to right: depth sets the pitch,
-/// the colony the octave. Returns the notes and how long the sweep lasts.
+/// Up to 32 mushrooms, spread across the soil, sing as a playhead sweeps it left to right: depth
+/// sets the pitch, the colony the octave. Returns the notes and how long the sweep lasts.
 pub fn forest(world: &World) -> (Vec<Value>, f32) {
     const SECS: f32 = 6.0;
+    // Slim plays at most 32 notes from one op.
+    const MAX_NOTES: usize = 32;
     let mut cells: Vec<usize> = (0..world.cells.len()).filter(|i| world.cells[*i].mushroom()).collect();
     cells.sort_by_key(|i| (i % world.w, i / world.w));
-    let mut notes: Vec<Value> = cells
-        .iter()
-        .take(32)
+    let n = cells.len();
+    let mut notes: Vec<Value> = (0..n.min(MAX_NOTES))
+        .map(|k| &cells[k * n / n.min(MAX_NOTES)])
         .map(|i| {
             let (r, c) = (i / world.w, i % world.w);
             let depth = (world.h - 1 - r) * 9 / world.h;
@@ -42,7 +44,7 @@ pub fn forest(world: &World) -> (Vec<Value>, f32) {
 /// The cue for one of the presser's own moves.
 pub fn cue(kind: &str) -> Vec<Value> {
     match kind {
-        "join" => vec![note(pitch(5), 0.0, 0.4), note(pitch(7), 0.15, 0.4), note(pitch(9), 0.3, 0.7)],
+        "join" | "season" => vec![note(pitch(5), 0.0, 0.4), note(pitch(7), 0.15, 0.4), note(pitch(9), 0.3, 0.7)],
         "lure" => vec![note(pitch(7), 0.0, 0.2), note(pitch(9), 0.08, 0.3)],
         "fruit" => (0..5).map(|k| note(pitch(5 + k * 2), k as f32 * 0.09, 0.5)).collect(),
         "burst" => vec![note(pitch(3), 0.0, 0.8), note(pitch(5), 0.0, 0.8), note(pitch(7), 0.0, 0.8)],
@@ -75,6 +77,8 @@ mod tests {
         }
         let (notes, secs) = forest(&world);
         assert_eq!(notes.len(), 32);
+        let last = notes.iter().map(|n| n["t"].as_f64().unwrap()).fold(0.0, f64::max);
+        assert!(last > f64::from(secs) * 0.9, "the rightmost mushrooms sing too, not only the leftmost 32: {last}");
         assert!(notes.iter().all(|n| n["t"].as_f64().unwrap() < f64::from(secs)));
     }
 

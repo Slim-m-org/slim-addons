@@ -1,6 +1,7 @@
 //! One press on the shared surface, start to finish.
 //!
-//! 1. The press becomes a move in the log (`data.store`), never a direct edit of the board.
+//! 1. The press becomes a move in the log (`data.store`), never a direct edit of the board;
+//!    starting a new season is a move too.
 //! 2. Every move since the board's last one is replayed, the presser's included.
 //! 3. Weather the space's events left in the inbox is applied.
 //! 4. The clock runs the world forward by the real time that passed, so a redraw, a tap and
@@ -10,7 +11,6 @@
 //! Two presses at once both reach the log, so whichever frame slim stores last still holds
 //! both: the losing frame's moves are replayed by the next one.
 
-use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::colony::{pid_of, Colony};
@@ -43,25 +43,19 @@ pub struct Answer {
     pub run_after: Option<Value>,
 }
 
-#[derive(Deserialize)]
-struct Press {
-    action: String,
-    #[serde(default)]
-    state: Option<String>,
-}
-
 pub fn surface<H: Host>(store: &Store<H>, input: &str, run: &Run) -> Answer {
-    let Ok(press) = serde_json::from_str::<Press>(input.trim()) else {
-        return launch(store, run, None);
+    let press: Value = serde_json::from_str(input.trim()).unwrap_or(Value::Null);
+    let state = press["state"].as_str();
+    let Some((game, world)) = state.and_then(Game::decode) else {
+        let why = state.map(|_| "that board could not be read, so fresh soil was dealt");
+        return launch(store, run, why);
     };
-    let Some((game, world)) = press.state.as_deref().and_then(Game::decode) else {
-        return launch(store, run, Some("that board could not be read, so fresh soil was dealt"));
-    };
-    let action = press.action.as_str();
+    // A malformed action on a real board redraws it; only a press with no board deals fresh soil.
+    let action = press["action"].as_str().unwrap_or("");
     let pid = pid_of(run.caller);
     let private = matches!(action, "my colony" | "burst" | "spore shot" | "link profile") || action.starts_with("name:");
     if private {
-        return Answer { output: colony_panel(store, (game, world), run, (&pid, action), press.state.unwrap_or_default()), run_after: None };
+        return Answer { output: colony_panel(store, (game, world), run, (&pid, action), state.unwrap_or_default().to_owned()), run_after: None };
     }
     shared(store, (game, world), run, (&pid, action))
 }
@@ -91,7 +85,7 @@ fn take_moves<H: Host>(store: &Store<H>, (game, world): (&mut Game, &mut World),
             Ok(id) => Some(id),
             Err(why) => {
                 // Without the log the press still counts, it just can be lost to a simultaneous one.
-                own = Some((mv.act.clone(), moves::apply(game, world, mv)));
+                own = Some((mv.act.clone(), replay((game, world), run.settings, (hash(run.entropy.as_bytes()), run.now_ms), mv)));
                 trouble = Some(why);
                 None
             }
@@ -100,8 +94,8 @@ fn take_moves<H: Host>(store: &Store<H>, (game, world): (&mut Game, &mut World),
     };
     match store.moves_after(&game.g, game.mv) {
         Ok(list) => {
-            for (id, m) in list {
-                let said = moves::apply(game, world, &m);
+            for (id, at_ms, m) in list {
+                let said = replay((game, world), run.settings, (id as u64, at_ms), &m);
                 if Some(id) == logged {
                     own = Some((m.act.clone(), said));
                 }
@@ -111,6 +105,19 @@ fn take_moves<H: Host>(store: &Store<H>, (game, world): (&mut Game, &mut World),
         Err(why) => trouble = trouble.or(Some(why)),
     }
     (own, trouble)
+}
+
+/// Applies one logged move; a new season is a move too, so every frame that replays it deals the same soil.
+fn replay((game, world): (&mut Game, &mut World), settings: &Settings, (salt, at_ms): (u64, i64), m: &Move) -> Said {
+    if m.act != "season" {
+        return moves::apply(game, world, m);
+    }
+    if !game.over || m.arg.parse::<u32>().ok() != Some(game.season + 1) {
+        return Err("a new season has already begun".into());
+    }
+    let seed = mix(&[game.seed, salt]);
+    new_season((game, world), settings, seed, at_ms);
+    Ok(format!("season {} begins", game.season))
 }
 
 fn take_weather<H: Host>(store: &Store<H>, (game, world): (&mut Game, &mut World), settings: &Settings) {
@@ -143,10 +150,11 @@ pub fn ticks_owed(game_ms: i64, now_ms: i64, tick_ms: i64) -> (u32, i64) {
 
 fn shared<H: Host>(store: &Store<H>, (mut game, mut world): (Game, World), run: &Run, (pid, action): (&str, &str)) -> Answer {
     let s = run.settings;
-    if action == "new season" && game.over {
-        new_season(&mut game, &mut world, run);
-    }
-    let (own, trouble) = take_moves(store, (&mut game, &mut world), run, move_for(pid, action));
+    let mv = match action {
+        "new season" => game.over.then(|| Move { pid: pid.into(), act: "season".into(), arg: (game.season + 1).to_string() }),
+        _ => move_for(pid, action),
+    };
+    let (own, trouble) = take_moves(store, (&mut game, &mut world), run, mv);
     take_weather(store, (&mut game, &mut world), s);
     let was_over = game.over;
     let (ticks, clock) = ticks_owed(game.ms, run.now_ms, s.tick_ms);
@@ -155,7 +163,7 @@ fn shared<H: Host>(store: &Store<H>, (mut game, mut world): (Game, World), run: 
     let mut run_after = None;
     if game.over && !was_over {
         run_after = end_season(store, &game, run.now_ms);
-    } else if run.now_ms - game.saved_ms > SAVE_EVERY_MS {
+    } else if !game.over && run.now_ms - game.saved_ms > SAVE_EVERY_MS {
         let _ = store.save_standings(&game.g, (game.season, game.tick, game.end), &standings(&game), run.now_ms);
         game.saved_ms = run.now_ms;
     }
@@ -224,9 +232,9 @@ pub fn standings(game: &Game) -> String {
 }
 
 /// Records a finished season once, however many frames see it end, and asks for the herald.
+/// The standings the herald posts are written by the same claim, so they match the records.
 fn end_season<H: Host>(store: &Store<H>, game: &Game, now_ms: i64) -> Option<Value> {
-    store.save_standings(&game.g, (game.season, game.tick, game.end), &standings(game), now_ms).ok()?;
-    if !store.claim_season_end(&game.g, game.season).ok()? {
+    if !store.claim_season_end(&game.g, (game.season, game.tick, game.end), &standings(game), now_ms).ok()? {
         return None;
     }
     let ranking = game.ranking();
@@ -262,17 +270,16 @@ fn launch<H: Host>(store: &Store<H>, run: &Run, why: Option<&str>) -> Answer {
 }
 
 /// Deals fresh soil for the next season and roots every player of the last one again.
-fn new_season(game: &mut Game, world: &mut World, run: &Run) {
+fn new_season((game, world): (&mut Game, &mut World), settings: &Settings, seed: u64, at_ms: i64) {
     let players: Vec<Colony> = game.c.iter().filter(|c| !c.is_wild()).cloned().collect();
-    let seed = mix(&[game.seed, hash(run.entropy.as_bytes())]);
-    let (w, h) = size_for(&run.settings.world);
+    let (w, h) = size_for(&settings.world);
     *world = World::generate(w, h, seed);
     *game = Game {
         g: game.g.clone(),
         seed,
         season: game.season + 1,
-        end: run.settings.season_ticks,
-        ms: run.now_ms,
+        end: settings.season_ticks,
+        ms: at_ms,
         mv: game.mv,
         ib: game.ib,
         w,

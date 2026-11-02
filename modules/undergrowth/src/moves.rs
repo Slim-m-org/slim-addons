@@ -190,7 +190,7 @@ fn spore(game: &mut Game, world: &mut World, pid: &str) -> Said {
     if let Some(c) = game.colony_mut(pid) {
         c.energy -= SPORE_COST;
     }
-    game.fx.push(Fx { k: 's', a: heart, b: at as u32 });
+    push_fx(game, Fx { k: 's', a: heart, b: at as u32 });
     Ok("your spore lands and roots an outpost".into())
 }
 

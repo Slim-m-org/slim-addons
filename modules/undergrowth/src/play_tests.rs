@@ -336,3 +336,83 @@ fn hostile_input_never_breaks_a_frame() {
     assert_eq!(call(&host, "@event", "a", "{", T0, json!({}))["ok"], false);
     assert_eq!(call(&host, "@slot", "a", "{", T0, json!({}))["ok"], false);
 }
+
+#[test]
+fn a_malformed_action_on_a_real_board_redraws_it_and_resets_nothing() {
+    let host = FakeHost::default();
+    let mut s = launch(&host);
+    for who in ["alice", "bob"] {
+        s = state(&scene(&press(&host, who, "join", &s, T0 + 10)));
+    }
+    let (before, _) = Game::decode(&s).unwrap();
+    for action in [json!(5), json!(null), json!({"x": 1}), json!("")] {
+        let input = json!({"action": action, "state": s}).to_string();
+        let (after, _) = decoded(&scene(&call(&host, "undergrowth", "mallory", &input, T0 + 20, json!({}))));
+        assert_eq!((&after.g, after.season, after.seed), (&before.g, before.season, before.seed), "{action}");
+        let pids = |g: &Game| g.c.iter().map(|c| c.pid.clone()).collect::<Vec<_>>();
+        assert_eq!(pids(&after), pids(&before), "{action}");
+    }
+    let (bare, _) = decoded(&scene(&call(&host, "undergrowth", "mallory", &json!({"state": s}).to_string(), T0 + 20, json!({}))));
+    assert_eq!((bare.g, bare.c.len()), (before.g, 2), "a press with a board and no action keeps it too");
+}
+
+/// Two players join and the clock runs until the season ends; the finished frame and the time.
+fn play_to_the_end(host: &FakeHost, fast: &Value) -> (Value, i64) {
+    let mut s = scene(&call(host, "undergrowth", "alice", "", T0, fast.clone()));
+    let mut now = T0;
+    for who in ["alice", "bob"] {
+        now += 10;
+        s = scene(&call(host, "undergrowth", who, &json!({"action": "join", "state": state(&s)}).to_string(), now, fast.clone()));
+    }
+    while !decoded(&s).0.over {
+        now += 6_000;
+        s = scene(&call(host, "undergrowth", "alice", &json!({"action": "refresh", "state": state(&s)}).to_string(), now, fast.clone()));
+    }
+    (s, now)
+}
+
+#[test]
+fn a_new_season_is_a_move_so_concurrent_frames_deal_the_same_soil() {
+    let host = FakeHost::default();
+    let fast = json!({"season_ticks": 200, "tick_ms": 150});
+    let (over, now) = play_to_the_end(&host, &fast);
+    let frame = |who: &str, action: &str, st: &str, at: i64| {
+        scene(&call(&host, "undergrowth", who, &json!({"action": action, "state": st}).to_string(), at, fast.clone()))
+    };
+    let song = frame("carol", "song", &state(&over), now + 100);
+    let a = frame("alice", "new season", &state(&over), now + 100);
+    let b = frame("bob", "new season", &state(&over), now + 100);
+    let (ga, wa) = decoded(&a);
+    let (gb, wb) = decoded(&b);
+    assert_eq!((ga.season, gb.season), (2, 2), "the second press finds the season already begun");
+    assert_eq!((ga.seed, &wa), (gb.seed, &wb), "both frames dealt the same soil");
+    assert!(b["status"].as_str().unwrap().contains("already begun"), "{}", b["status"]);
+    let (gs, _) = decoded(&song);
+    assert!(gs.over && gs.season == 1, "a song that ran before the new season still shows the finished board");
+    // Whichever frame slim stored, even the older finished one, carol's join on it lands on the new season.
+    for stored in [&a, &b, &song] {
+        let joined = frame("carol", "join", &state(stored), now + 200);
+        let (g, _) = decoded(&joined);
+        assert_eq!((g.season, g.seed, g.over), (2, ga.seed, false));
+        assert!(g.colony("carol").is_some(), "{}", joined["status"]);
+    }
+}
+
+#[test]
+fn the_season_end_claim_fixes_the_standings_the_herald_posts() {
+    let host = FakeHost::default();
+    let fast = json!({"season_ticks": 200, "tick_ms": 150});
+    let (_, now) = play_to_the_end(&host, &fast);
+    let row = || host.rows("games").into_iter().next().unwrap();
+    let claimed = row()["standings"].clone();
+    assert_eq!(row()["ended"], 1);
+    let store = Store::new(&host);
+    let game_id = row()["game"].as_str().unwrap().to_owned();
+    let late = r#"{"season":1,"over":false,"colonies":[{"name":"Late Frame","total":1}]}"#;
+    host.next_run();
+    store.save_standings(&game_id, (1, 150, 200), late, now + 1).unwrap();
+    assert!(!store.claim_season_end(&game_id, (1, 200, 200), late, now + 2).unwrap());
+    assert_eq!(row()["standings"], claimed, "a frame that lost the race writes nothing over the final standings");
+    let posted = call(&host, "herald", "bot", &game_id, now + 10_000, json!({}));
+    assert!(!posted["output"].as_str().unwrap().contains("Late Frame"), "{posted}");
+}

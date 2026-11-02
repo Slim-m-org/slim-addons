@@ -19,7 +19,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/undergrowth/0.1.0/module.wasm",
-    "sha256": "7b81359c35fe9db5e94af504d22509adbb3f3eac8351add469bb3fc3a62775b5"
+    "sha256": "b749a1bc7d086e5cc073bc13397a2ef482e16a28edf2a3a4964e53a457466d30"
   },
   "permissions": [
     {

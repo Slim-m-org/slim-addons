@@ -37,7 +37,8 @@ impl<'a, H: Host> Store<'a, H> {
         Ok(reply["rows"][0]["_id"].as_i64().unwrap_or(0))
     }
 
-    pub fn moves_after(&self, game: &str, after: i64) -> Result<Vec<(i64, Move)>, String> {
+    /// Each move's id, when it was logged, and the move.
+    pub fn moves_after(&self, game: &str, after: i64) -> Result<Vec<(i64, i64, Move)>, String> {
         let reply = self.data(json!({
             "op": "query", "table": "moves",
             "where": [cond("game", "eq", json!(game)), cond("_id", "gt", json!(after))],
@@ -47,7 +48,7 @@ impl<'a, H: Host> Store<'a, H> {
             .iter()
             .map(|r| {
                 let text = |k: &str| r[k].as_str().unwrap_or("").to_owned();
-                (r["_id"].as_i64().unwrap_or(0), Move { pid: text("pid"), act: text("act"), arg: text("arg") })
+                (r["_id"].as_i64().unwrap_or(0), r["at_ms"].as_i64().unwrap_or(0), Move { pid: text("pid"), act: text("act"), arg: text("arg") })
             })
             .collect())
     }
@@ -81,19 +82,34 @@ impl<'a, H: Host> Store<'a, H> {
         Ok(Self::rows(&reply).first().and_then(|r| r["_id"].as_i64()).unwrap_or(0))
     }
 
-    pub fn save_standings(&self, game: &str, (season, tick, end): (u32, u32, u32), standings: &str, now_ms: i64) -> Result<(), String> {
-        let values = json!({"game": game, "season": season, "tick": tick, "end_tick": end, "standings": standings, "updated_ms": now_ms});
-        self.data(json!({"op": "upsert", "table": "games", "on": "game", "values": values, "add": {"ended": 0, "posted": 0}}))
+    /// Makes sure the game has a row, without touching what it holds.
+    fn ensure_game(&self, game: &str) -> Result<(), String> {
+        self.data(json!({"op": "upsert", "table": "games", "on": "game", "values": {"game": game}, "add": {"ended": 0, "posted": 0}}))
             .map(|_| ())
     }
 
-    /// Marks `season` of `game` ended; true only for the one run that got there first.
-    pub fn claim_season_end(&self, game: &str, season: u32) -> Result<bool, String> {
+    /// Writes standings, or claims the season's end too; only while `season` has not been claimed.
+    fn write_standings(&self, game: &str, (season, tick, end): (u32, u32, u32), (standings, now_ms): (&str, i64), claim: bool) -> Result<bool, String> {
+        self.ensure_game(game)?;
+        let mut values = json!({"season": season, "tick": tick, "end_tick": end, "standings": standings, "updated_ms": now_ms});
+        if claim {
+            values["ended"] = json!(season);
+        }
         let reply = self.data(json!({
-            "op": "update", "table": "games", "values": {"ended": season},
+            "op": "update", "table": "games", "values": values,
             "where": [cond("game", "eq", json!(game)), cond("ended", "lt", json!(season))]
         }))?;
         Ok(reply["changed"].as_i64() == Some(1))
+    }
+
+    /// Standings of a season still being played; a season already claimed as ended keeps the ones it ended with.
+    pub fn save_standings(&self, game: &str, clock: (u32, u32, u32), standings: &str, now_ms: i64) -> Result<(), String> {
+        self.write_standings(game, clock, (standings, now_ms), false).map(|_| ())
+    }
+
+    /// Marks `season` of `game` ended with these final standings; true only for the one run that got there first.
+    pub fn claim_season_end(&self, game: &str, clock: (u32, u32, u32), standings: &str, now_ms: i64) -> Result<bool, String> {
+        self.write_standings(game, clock, (standings, now_ms), true)
     }
 
     /// Marks the ended season's results posted; true only for the one run that should post them.
