@@ -142,6 +142,7 @@ fn parse_session(row: &Value) -> Option<Session> {
         joined_at_ms: row["joined_at_ms"].as_i64()?,
         left_at_ms: row["left_at_ms"].as_i64()?,
         alone_ms: row["alone_ms"].as_i64().unwrap_or(0),
+        is_bot: row["is_bot"].as_bool().unwrap_or(false),
     })
 }
 

@@ -158,6 +158,29 @@ fn bots_and_the_default_setting_earn_nothing_and_cost_nothing() {
 }
 
 #[test]
+fn a_bot_in_a_call_earns_nothing_and_the_cursor_still_moves() {
+    let host = FakeHost::default();
+    host.push_bot_session(1, "bot", 0, 10 * MIN);
+    host.push_session(2, "ada", 0, 10 * MIN, 0);
+    assert_eq!(voice_event(&host)["ok"], true);
+    assert_eq!((host.xp_of("bot"), host.xp_of("ada")), (0, 50));
+    assert!(host.xp.borrow().iter().all(|r| r["user_id"] != "bot"));
+    assert_eq!(host.cursor(), 2);
+}
+
+#[test]
+fn a_bot_has_no_badge_or_section_even_with_xp_from_before() {
+    let host = FakeHost::with_xp(&[("bot", 780), ("ada", 780)]);
+    for name in ["xp", "level"] {
+        let ask = json!({"slot": "x", "name": name, "user_ids": ["bot", "ada"], "bot_ids": ["bot"], "viewer_id": "v"});
+        let reply = run(&host, "@slot", ask, json!({}));
+        let items: Value = serde_json::from_str(reply["output"].as_str().unwrap()).unwrap();
+        assert!(items["items"].get("bot").is_none(), "{name}");
+        assert!(items["items"].get("ada").is_some(), "{name}");
+    }
+}
+
+#[test]
 fn unsubscribed_events_and_bad_input_do_not_trap() {
     let host = FakeHost::default();
     let other = json!({"event": "member.joined", "id": "x", "at_ms": 1, "data": {}});

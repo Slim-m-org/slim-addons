@@ -12,10 +12,8 @@ const MAX_MEMBERS: usize = 100;
 /// Answers an `@slot` run: an item for each asked member that has XP, none for the rest.
 pub fn answer<H: Host>(store: &Store<H>, curve: Curve, input: &Value) -> Result<String, String> {
     let name = input["name"].as_str().unwrap_or("");
-    let users: Vec<String> = input["user_ids"]
-        .as_array()
-        .map(|ids| ids.iter().filter_map(|id| id.as_str().map(str::to_string)).take(MAX_MEMBERS).collect())
-        .unwrap_or_default();
+    let bots = strings(&input["bot_ids"]);
+    let users: Vec<String> = strings(&input["user_ids"]).into_iter().filter(|id| !bots.contains(id)).take(MAX_MEMBERS).collect();
     let mut items = Map::new();
     if !users.is_empty() {
         for (user, xp) in store.totals(&users)? {
@@ -25,6 +23,10 @@ pub fn answer<H: Host>(store: &Store<H>, curve: Curve, input: &Value) -> Result<
         }
     }
     Ok(json!({"$slim": "slot/1", "items": items}).to_string())
+}
+
+fn strings(value: &Value) -> Vec<String> {
+    value.as_array().map(|ids| ids.iter().filter_map(|id| id.as_str().map(str::to_string)).collect()).unwrap_or_default()
 }
 
 fn item(slot: &str, xp: i64, curve: Curve) -> Value {
