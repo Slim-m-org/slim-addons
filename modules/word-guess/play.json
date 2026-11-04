@@ -3,19 +3,40 @@
  "command": "wordguess",
  "scenarios": [
   {
-   "name": "launch is a shared landing with no board on it",
+   "name": "launch is a shared landing with an empty board and the input",
    "steps": [
     {
      "as": "a1",
      "expect": {
       "status": "everyone plays their own board",
       "controls": [
-       "play today",
+       "my board",
        "practice"
       ],
       "text_has": [
-       "Word Guess"
+       "Word Guess - day"
       ],
+      "input": true
+     }
+    }
+   ],
+   "now_ms": 1700000000000
+  },
+  {
+   "name": "my board brings a mid-game player back to their own board without spending a try",
+   "steps": [
+    {
+     "as": "a1",
+     "do": "guess:slate",
+     "expect": {
+      "status_has": "1 of 6"
+     }
+    },
+    {
+     "as": "a1",
+     "do": "my board",
+     "expect": {
+      "status_has": "1 of 6 tries used",
       "input": true
      }
     }
