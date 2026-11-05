@@ -1,0 +1,125 @@
+{
+  "command": "undergrowth",
+  "scenarios": [
+    {
+      "name": "a launch deals soil and offers join",
+      "steps": [
+        {
+          "as": "a1",
+          "expect": {
+            "controls": ["play", "join", "song", "my colony"],
+            "status_has": "fresh soil",
+            "input": false,
+            "live": true,
+            "taps_has": ["lure"],
+            "text_has": ["No colonies yet."]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a player joins and lures, and a refused move says why",
+      "steps": [
+        { "as": "a1" },
+        { "as": "a1", "do": "join", "expect": { "status_has": "you are", "state_has": "\"p\":\"a1\"", "text_lack": ["No colonies yet."] } },
+        { "as": "a1", "do": "join", "expect": { "status_has": "already growing" } },
+        { "as": "a1", "do": "lure:10,10", "expect": { "status": "your hyphae turn toward it" } },
+        { "as": "a1", "do": "lure:5,1;5,2;5,3", "expect": { "status": "your hyphae will follow 3 waypoints" } },
+        { "as": "a1", "do": "lure:99,99", "expect": { "status": "that is not a place on the board" } },
+        { "as": "a1", "do": "fruit:0,0", "expect": { "status": "you can only fruit on your own hyphae" } },
+        { "as": "b2", "do": "lure:3,3", "expect": { "status": "join first, then lure" } }
+      ]
+    },
+    {
+      "name": "two players joining from one stale board both end up on it",
+      "steps": [
+        { "as": "a1", "save": "start" },
+        { "as": "a1", "do": "join" },
+        { "as": "b2", "do": "join", "state": "@start", "expect": { "status_has": "you are" } },
+        { "as": "c3", "do": "refresh", "expect": { "state_has": "\"p\":\"a1\"" } },
+        { "as": "c3", "do": "refresh", "expect": { "state_has": "\"p\":\"b2\"" } },
+        { "as": "a1", "do": "join", "expect": { "status_has": "already growing" } }
+      ]
+    },
+    {
+      "name": "my colony is private, a burst from it lands on the board once",
+      "steps": [
+        { "as": "a1" },
+        { "as": "z9", "do": "my colony", "expect": { "controls": ["back", "join"], "text_has": ["No colony this season"] } },
+        { "as": "a1", "do": "join" },
+        {
+          "as": "a1",
+          "do": "my colony",
+          "expect": { "controls": ["back", "burst", "spore shot", "link profile"], "status_has": "only you", "input": true }
+        },
+        { "as": "a1", "do": "burst", "expect": { "status": "your colony surges for thirty ticks" } },
+        { "as": "a1", "do": "burst", "expect": { "status": "a burst takes 30 energy; you have 0" } },
+        { "as": "a1", "do": "name:Moss Lord", "expect": { "status": "your colony is now Moss Lord" } },
+        { "as": "a1", "do": "name:", "expect": { "status": "type a name first" } },
+        { "as": "a1", "do": "back", "expect": { "text_has": ["1. Moss Lord"], "state_has": "\"e\":0", "controls_has": ["join"] } },
+        { "as": "a1", "do": "my colony", "expect": { "text_has": ["Energy 0 of 240"] } },
+        { "as": "a1", "do": "link profile", "expect": { "text_has": ["Post ug-"] } }
+      ]
+    },
+    {
+      "name": "the world moves with the clock and keeps the time left over",
+      "now_ms": 1700000000000,
+      "steps": [
+        { "as": "a1" },
+        { "as": "a1", "do": "join" },
+        { "as": "a1", "do": "refresh", "now_ms": 1700000001000, "expect": { "state_has": "\"tick\":2," } },
+        { "as": "a1", "do": "refresh", "now_ms": 1700000001100, "expect": { "state_has": "\"tick\":2," } },
+        { "as": "a1", "do": "refresh", "now_ms": 1700000001200, "expect": { "state_has": "\"tick\":3," } },
+        { "as": "a1", "do": "step", "now_ms": 1700003600000, "expect": { "state_has": "\"tick\":43," } }
+      ]
+    },
+    {
+      "name": "a short season ends, is announced once and deals a new one with the same players",
+      "settings": { "season_ticks": 200, "tick_ms": 150 },
+      "now_ms": 1700000000000,
+      "steps": [
+        { "as": "a1" },
+        { "as": "a1", "do": "join" },
+        { "as": "b2", "do": "join" },
+        { "as": "a1", "do": "refresh", "now_ms": 1700000006000 },
+        { "as": "a1", "do": "refresh", "now_ms": 1700000012000 },
+        { "as": "a1", "do": "refresh", "now_ms": 1700000018000 },
+        { "as": "a1", "do": "refresh", "now_ms": 1700000024000, "expect": { "controls_has": ["play"] } },
+        {
+          "as": "a1",
+          "do": "refresh",
+          "now_ms": 1700000030000,
+          "expect": { "controls": ["new season", "song", "my colony"], "status_has": "won season 1", "text_has": ["wins season 1"] }
+        },
+        { "as": "b2", "do": "lure:5,5", "expect": { "status": "the season is over" } },
+        { "tick": "herald", "now_ms": 1700000040000, "expect": { "posts_count": 1, "posts_has": "Season 1 of the undergrowth is over." } },
+        { "tick": "herald", "now_ms": 1700000050000, "expect": { "posts_count": 0, "output_has": "nothing new" } },
+        {
+          "as": "b2",
+          "do": "new season",
+          "now_ms": 1700000060000,
+          "expect": { "status": "season 2 begins", "controls": ["play", "join", "song", "my colony"], "state_has": "\"season\":2," }
+        },
+        { "as": "a1", "do": "join", "now_ms": 1700000060000, "expect": { "status_has": "already growing" } }
+      ]
+    },
+    {
+      "name": "the song sings and the almanac stays quiet on a quiet day",
+      "steps": [
+        { "as": "a1" },
+        { "as": "a1", "do": "song", "expect": { "status_has": "sings" } },
+        { "tick": "almanac", "expect": { "posts_count": 0, "output_has": "quiet day" } }
+      ]
+    },
+    {
+      "name": "a hostile or malformed state neither hangs the module nor breaks the scene",
+      "steps": [
+        { "as": "a1", "do": "refresh", "state": "not|a|state|at|all", "expect": { "status_has": "could not be read" } },
+        { "as": "a1", "do": "join", "state": "||||||||||||||||||||||||||||||||||||||||", "expect": { "ok": null } },
+        { "as": "a1", "do": "lure:1,1", "state": "{\"g\":\"x\",\"seed\":1,\"season\":1,\"tick\":0,\"end\":9,\"ms\":0,\"mv\":0,\"ib\":0,\"w\":128,\"h\":80}|AAAA", "expect": { "status_has": "could not be read" } },
+        { "as": "a1", "do": "fruit:1,1", "state": "{\"g\":\"x\",\"seed\":1,\"season\":1,\"tick\":0,\"end\":9,\"ms\":0,\"mv\":0,\"ib\":0,\"w\":99999,\"h\":2}|", "expect": { "ok": null } },
+        { "as": "a1", "do": "my colony", "fresh": true, "expect": { "ok": null } }
+      ]
+    }
+  ]
+}

@@ -43,7 +43,8 @@
 //! `--caller` puts `{"caller":{"id":...}}` in the request, which is how a
 //! seat-based module learns who is acting. `--fuel` meters the run and fails it
 //! with `out of fuel` when the budget is spent, the way slim refuses a module
-//! over `runtime.limits.fuel`; without it the run is unmetered.
+//! over `runtime.limits.fuel`, and prints the fuel the run used to stderr;
+//! without it the run is unmetered.
 //!
 //! Memory and wall-clock limits are not enforced here. The manifest's
 //! `runtime.limits` is the authority on those, and the scripts that drive this
@@ -131,6 +132,9 @@ fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
     let given = settings::resolve(manifest.as_ref(), &options.settings)?;
     let request = serde_request(&command, &input, options.caller.as_deref(), (now_ms, given));
     let reply = call_run(&mut store, &instance, request.as_bytes())?;
+    if let Some(fuel) = options.fuel {
+        eprintln!("fuel used: {}", fuel.saturating_sub(store.get_fuel().unwrap_or(fuel)));
+    }
     for (n, content) in store.data().posts.iter().enumerate() {
         eprintln!("message.post #{}: {content}", n + 1);
     }
