@@ -491,7 +491,8 @@
      "as": "b2",
      "do": "c7",
      "expect": {
-      "state_unchanged": true
+      "state_unchanged": true,
+      "status": "there is no such column - Yellow to move"
      }
     },
     {

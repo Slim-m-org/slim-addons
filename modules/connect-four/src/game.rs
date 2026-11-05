@@ -50,13 +50,21 @@ fn play(input: &str, caller: &str) -> String {
         }
         // A column's tappable rect carries tap "c<index>".
         col if col.starts_with('c') => {
-            if let Ok(i) = col[1..].parse::<usize>() {
+            if let Some(i) = column_index(&col[1..]) {
                 note = game.play_column(i, caller).err();
             }
         }
         _ => {}
     }
     render(&game, note)
+}
+
+/// A column tap names one digit, as the board's rects write it; `00` or `+1` is not a column.
+fn column_index(digits: &str) -> Option<usize> {
+    match digits.as_bytes() {
+        [d] if d.is_ascii_digit() => Some(usize::from(d - b'0')),
+        _ => None,
+    }
 }
 
 #[derive(Deserialize)]
@@ -126,6 +134,9 @@ impl Game {
     pub fn play_column(&mut self, col: usize, caller: &str) -> Result<(), Refusal> {
         if self.over() {
             return Err(Refusal::Illegal("the game is over"));
+        }
+        if col >= COLS {
+            return Err(Refusal::Illegal("there is no such column"));
         }
         let seats = self.seats.admit(caller, self.turn == 'R')?;
         if self.landing_row(col).is_none() {
@@ -513,9 +524,18 @@ mod tests {
         let refused = step(&state_of(&filled), A, &0);
         assert!(status(&refused).starts_with("that column is full"));
         assert_eq!(state_of(&refused), state_of(&filled));
-        let off_board = step(&Game::new().state(), C, &9);
-        assert!(status(&off_board).starts_with("that column is full"));
+        let off_board = step(&Game::new().state(), C, &7);
+        assert!(status(&off_board).starts_with("there is no such column"));
         assert_eq!(state_of(&off_board), Game::new().state(), "an illegal move claims no seat");
+    }
+
+    #[test]
+    fn a_column_is_one_digit() {
+        assert_eq!(column_index("0"), Some(0));
+        assert_eq!(column_index("6"), Some(6));
+        for bad in ["00", "+1", "", "a", "10", "-1"] {
+            assert_eq!(column_index(bad), None, "{bad}");
+        }
     }
 
     #[test]

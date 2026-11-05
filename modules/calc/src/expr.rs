@@ -172,7 +172,7 @@ impl Parser<'_> {
         }
         let name: String = self.chars[start..self.pos].iter().collect();
         if self.eat('(') {
-            let args = self.nested(|p| p.arguments())?;
+            let args = self.nested(Self::arguments)?;
             return call(&name, &args).and_then(finite);
         }
         match name.as_str() {

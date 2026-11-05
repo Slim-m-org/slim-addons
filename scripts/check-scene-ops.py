@@ -54,7 +54,9 @@ HEX_COLOUR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 MAX_PATH_STEPS = 512
 MAX_PATH_CHARS = 32768
 PATH_ARGS = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "Q": 4, "Z": 0}
-PATH_TOKEN = re.compile(r"[A-Za-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+_NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)"
+_EXPONENT = r"(?:[eE][-+]?\d+)?"
+PATH_TOKEN = re.compile(rf"[A-Za-z]|{_NUMBER}{_EXPONENT}")
 
 # module_scene_sweep.dart, SceneSweep.maxPerScene: later animated ops draw still.
 MAX_SWEEPS = 8
@@ -116,60 +118,84 @@ def run_module(runner, wasm, command, payload, caller=None):
     return answer["output"]
 
 
+def check_background(background):
+    """The scene's background colour, which the renderer ignores when it is not one."""
+    if isinstance(background, str) and background and not is_colour(background):
+        return [f"background: unknown colour {background!r}"]
+    if background is not None and not isinstance(background, str):
+        return ["background: not a string, so it is ignored"]
+    return []
+
+
+def check_path(where, d):
+    """A path the renderer would drop or cut short."""
+    if len(d) > MAX_PATH_CHARS:
+        return [f"{where}: d is over {MAX_PATH_CHARS} characters, the renderer drops the op"]
+    if path_steps(d) > MAX_PATH_STEPS:
+        return [f"{where}: more than {MAX_PATH_STEPS} path steps, the tail is dropped"]
+    return []
+
+
+def check_keys(where, kind, op):
+    """Keys this op does not read, and colours that silently fall back."""
+    problems = []
+    for key, value in op.items():
+        if key == "op":
+            continue
+        if key not in OPS[kind]:
+            problems.append(f"{where}: key {key!r} is not read by this op")
+        if key in COLOUR_KEYS and isinstance(value, str) and not is_colour(value):
+            problems.append(
+                f"{where}: {key} {value!r} is not a scene colour; "
+                "it silently falls back"
+            )
+    return problems
+
+
+def check_op(index, op):
+    """Problems with one op; the op itself is not checked further once it is unusable."""
+    if not isinstance(op, dict):
+        return [f"ops[{index}]: not an object, the renderer skips it"]
+    kind = op.get("op")
+    where = f"ops[{index}] ({kind})"
+    if kind not in OPS:
+        return [f"{where}: unknown op, the renderer drops it"]
+    problems = []
+    need = REQUIRED.get(kind)
+    if need and need not in op:
+        problems.append(f"{where}: no {need!r} key, so the renderer drops this op entirely")
+    if kind == "path" and isinstance(op.get("d"), str):
+        problems += check_path(where, op["d"])
+    return problems + check_keys(where, kind, op)
+
+
+def check_sweeps(ops):
+    """The first op past the scene's sweep budget, which draws still."""
+    sweeping = 0
+    for index, op in enumerate(ops):
+        if isinstance(op, dict) and op.get("op") in OPS and "sweep" in op:
+            sweeping += 1
+            if sweeping == MAX_SWEEPS + 1:
+                where = f"ops[{index}] ({op.get('op')})"
+                return [f"{where}: more than {MAX_SWEEPS} sweeps in one scene, the rest draw still"]
+    return []
+
+
 def check_scene(raw):
     """Every problem with one emitted scene, as a list of sentences."""
-    problems = []
     try:
         scene = json.loads(raw)
     except json.JSONDecodeError:
         return ["output is not JSON, so it renders as plain text"]
     if not isinstance(scene, dict) or scene.get("$slim") != "scene/1":
         return ["output is not tagged scene/1, so it renders as plain text"]
-
-    background = scene.get("background")
-    if isinstance(background, str) and background and not is_colour(background):
-        problems.append(f"background: unknown colour {background!r}")
-    elif background is not None and not isinstance(background, str):
-        problems.append("background: not a string, so it is ignored")
-
+    problems = check_background(scene.get("background"))
     ops = scene.get("ops", [])
     if not isinstance(ops, list):
         return problems + ["ops: not a list, so nothing draws"]
-    sweeping = 0
     for index, op in enumerate(ops):
-        if not isinstance(op, dict):
-            problems.append(f"ops[{index}]: not an object, the renderer skips it")
-            continue
-        kind = op.get("op")
-        where = f"ops[{index}] ({kind})"
-        if kind not in OPS:
-            problems.append(f"{where}: unknown op, the renderer drops it")
-            continue
-        need = REQUIRED.get(kind)
-        if need and need not in op:
-            problems.append(
-                f"{where}: no {need!r} key, so the renderer drops this op entirely"
-            )
-        if "sweep" in op:
-            sweeping += 1
-            if sweeping == MAX_SWEEPS + 1:
-                problems.append(f"{where}: more than {MAX_SWEEPS} sweeps in one scene, the rest draw still")
-        if kind == "path" and isinstance(op.get("d"), str):
-            if len(op["d"]) > MAX_PATH_CHARS:
-                problems.append(f"{where}: d is over {MAX_PATH_CHARS} characters, the renderer drops the op")
-            elif path_steps(op["d"]) > MAX_PATH_STEPS:
-                problems.append(f"{where}: more than {MAX_PATH_STEPS} path steps, the tail is dropped")
-        for key, value in op.items():
-            if key == "op":
-                continue
-            if key not in OPS[kind]:
-                problems.append(f"{where}: key {key!r} is not read by this op")
-            if key in COLOUR_KEYS and isinstance(value, str) and not is_colour(value):
-                problems.append(
-                    f"{where}: {key} {value!r} is not a scene colour; "
-                    "it silently falls back"
-                )
-    return problems
+        problems += check_op(index, op)
+    return problems + check_sweeps(ops)
 
 
 def main(argv):

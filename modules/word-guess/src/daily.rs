@@ -25,7 +25,12 @@ pub fn day_of(now_ms: i64) -> i64 {
 /// give neighbouring words; a plain modulo would walk the list one entry at a time.
 pub fn answer_for(day: i64) -> &'static str {
     let mixed = (day as u64).wrapping_mul(6_364_136_223_846_793_005) ^ 0x9E37_79B9_7F4A_7C15;
-    WORDS[(mixed >> 17) as usize % WORDS.len()]
+    WORDS[pick(mixed)]
+}
+
+/// The list index for a mixed seed, through `u32` so a native build picks what the wasm32 one does.
+pub fn pick(mixed: u64) -> usize {
+    (mixed >> 17) as u32 as usize % WORDS.len()
 }
 
 /// One player's stored board for one day.
@@ -137,6 +142,15 @@ pub fn explain(host_error: &str) -> String {
 mod tests {
     use super::*;
     use crate::fake::FakeHost;
+
+    #[test]
+    fn a_native_build_picks_the_word_the_wasm_one_does() {
+        assert_eq!(answer_for(day_of(1_700_000_000_000)), "onion", "play.json's day, played through the wasm");
+        for day in [0u64, 1, 19_000, 20_393, 40_000] {
+            let mixed = day.wrapping_mul(6_364_136_223_846_793_005) ^ 0x9E37_79B9_7F4A_7C15;
+            assert_eq!(pick(mixed), ((mixed >> 17) as u32 % WORDS.len() as u32) as usize, "day {day}");
+        }
+    }
 
     #[test]
     fn a_day_is_a_utc_day_and_the_word_follows_it() {

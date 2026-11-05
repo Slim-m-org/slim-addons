@@ -18,6 +18,9 @@ root = pathlib.Path(__file__).resolve().parent.parent
 runner = sys.argv[1]
 
 # (module, command) -> (input, what the output must start with)
+# One reminder, set before the commands that need one to exist.
+BREAD = "30m take the bread out"
+
 SAMPLES = {
     ("calc", "eval"): ("2 * (3 + 4)", "2 * (3 + 4) = 14"),
     ("code-exec", "run"): ("1 + 1", "2"),
@@ -30,7 +33,7 @@ SAMPLES = {
     ("json-tools", "format"): ('{"a":1}', '{\n  "a": 1\n}'),
     ("markdown-tools", "stats"): ("hello world", "Words: 2\n"),
     ("plot", "bars"): ("3, 7, 2", '{"$slim":"scene/1"'),
-    ("reminder", "remind"): ("30m take the bread out", "Reminder set for 30 minutes from now: take the bread out"),
+    ("reminder", "remind"): (BREAD, "Reminder set for 30 minutes from now: take the bread out"),
     ("reminder", "list"): ("", "1. in 30 minutes: take the bread out"),
     ("reminder", "cancel"): ("1", "Cancelled: take the bread out"),
     ("reminder", "due"): ("", "Posted 1 reminder."),
@@ -55,9 +58,9 @@ SETUP = {
     ("tags", "tag"): [("add", "rules Be kind")],
     ("tags", "edit"): [("add", "rules Be kind")],
     ("tags", "remove"): [("add", "rules Be kind")],
-    ("reminder", "list"): [("remind", "30m take the bread out")],
-    ("reminder", "cancel"): [("remind", "30m take the bread out")],
-    ("reminder", "due"): [("remind", "30m take the bread out")],
+    ("reminder", "list"): [("remind", BREAD)],
+    ("reminder", "cancel"): [("remind", BREAD)],
+    ("reminder", "due"): [("remind", BREAD)],
 }
 
 # The clock every run of a module with a time-dependent command is given.

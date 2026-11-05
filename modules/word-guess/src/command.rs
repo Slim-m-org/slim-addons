@@ -145,7 +145,7 @@ fn practice_seed(run: &Run) -> u64 {
 }
 
 fn practice_answer(seed: u64) -> &'static str {
-    WORDS[((seed.wrapping_mul(6_364_136_223_846_793_005) ^ 0x9E37_79B9_7F4A_7C15) >> 17) as usize % WORDS.len()]
+    WORDS[crate::daily::pick(seed.wrapping_mul(6_364_136_223_846_793_005) ^ 0x9E37_79B9_7F4A_7C15)]
 }
 
 fn new_practice<H: Host>(host: &H, player: &str, seed: u64) -> Result<String, String> {

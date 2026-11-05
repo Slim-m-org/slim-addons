@@ -11,7 +11,6 @@
 mod command;
 
 use std::alloc::{alloc as std_alloc, Layout};
-use std::cell::RefCell;
 
 use serde::{Deserialize, Serialize};
 
@@ -31,10 +30,6 @@ struct OkResponse {
 struct ErrResponse {
     ok: bool,
     error: String,
-}
-
-thread_local! {
-    static LAST_RESPONSE: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Reserves `len` bytes in this module's own linear memory and returns a
@@ -60,9 +55,6 @@ pub extern "C" fn run(in_ptr: i32, in_len: i32) -> i64 {
         unsafe { std::ptr::copy_nonoverlapping(body.as_ptr(), ptr, out_len) };
         ptr
     };
-
-    // Keeps the response bytes alive; the host reads them right after this returns.
-    LAST_RESPONSE.with(|slot| *slot.borrow_mut() = body);
 
     let packed = ((out_ptr as u64) << 32) | (out_len as u64 & 0xFFFF_FFFF);
     packed as i64
