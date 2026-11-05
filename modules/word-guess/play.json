@@ -1,5 +1,5 @@
 {
- "note": "The answer on the scripts' day is onion: the wasm picks it with a 32-bit usize, so a native test run picks another word.",
+ "note": "The answer on the scripts' day is onion, the same in the wasm and a native test run.",
  "command": "wordguess",
  "scenarios": [
   {

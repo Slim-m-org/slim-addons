@@ -76,7 +76,7 @@
     {
       "id": "word-guess",
       "name": "Word Guess",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "summary": "One five-letter word a day, the same for everyone, each on their own private board, with a spoiler-free result to post."
     },
     {
