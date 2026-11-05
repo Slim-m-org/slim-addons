@@ -2,10 +2,16 @@
   "schema": 1,
   "id": "table",
   "name": "Table",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "summary": "Align CSV or TSV into a neat monospace table.",
   "description": "Paste CSV or TSV and get back an aligned monospace table with a header rule; numeric columns are right-aligned. Type `/table name,age\\nalice,30`, or write a `csv` code block and press Run. Plain-text output - it reads the same everywhere.",
   "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "Drops a second copy of each response the module kept and never read."
+      ]
+    },
     {
       "version": "0.1.1",
       "changes": [
@@ -31,8 +37,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/table/0.1.1/module.wasm",
-    "sha256": "1d681f69aa0a3cdef5293dd57e65965d8fa5dff1c89da2d68f03b51d7dae49d8"
+    "path": "modules/table/0.1.2/module.wasm",
+    "sha256": "e6ee3923e4f468c0eb3b6a74cfa0177d1fc68754fe4f75768eb6373c7ed599b8"
   },
   "permissions": [
     {

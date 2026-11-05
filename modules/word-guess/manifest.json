@@ -9,7 +9,8 @@
     {
       "version": "0.2.2",
       "changes": [
-        "The daily word is picked the same way on every build, so tests and the published module always agree; the words people get do not change."
+        "The daily word is picked the same way on every build, so tests and the published module always agree; the words people get do not change.",
+        "Drops a second copy of each response the module kept and never read."
       ]
     },
     {
@@ -56,7 +57,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/word-guess/0.2.2/module.wasm",
-    "sha256": "770cbad29c968f0fdf687aa0b09e991c7a79bc9b993e88b17f09fd0a98163a9e"
+    "sha256": "92e03c2148fef376316c09ec71b842fbb6b7102a8b4762e7e898fde654cbd988"
   },
   "permissions": [
     {
