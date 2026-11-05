@@ -78,7 +78,8 @@ fn group_by_member(rows: &[Session]) -> Vec<(String, Vec<&Session>)> {
 }
 
 fn award_batch<H: Host>(store: &Store<H>, settings: &Settings, batch: &[Session]) -> Result<(), String> {
-    let groups = group_by_member(batch);
+    let people: Vec<Session> = batch.iter().filter(|s| !s.is_bot).cloned().collect();
+    let groups = group_by_member(&people);
     let users: Vec<String> = groups.iter().map(|(user, _)| user.clone()).collect();
     let existing = store.members(&users)?;
     let missing: Vec<String> = users.iter().filter(|user| !existing.contains_key(*user)).cloned().collect();

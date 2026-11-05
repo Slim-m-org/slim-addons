@@ -14,6 +14,8 @@ pub struct Session {
     pub joined_at_ms: i64,
     pub left_at_ms: i64,
     pub alone_ms: i64,
+    /// A bot account, which earns nothing.
+    pub is_bot: bool,
 }
 
 impl Session {
@@ -35,7 +37,7 @@ mod tests {
     use super::*;
 
     fn session(joined: i64, left: i64, alone: i64) -> Session {
-        Session { id: 1, user_id: "u".into(), joined_at_ms: joined, left_at_ms: left, alone_ms: alone }
+        Session { id: 1, user_id: "u".into(), joined_at_ms: joined, left_at_ms: left, alone_ms: alone, is_bot: false }
     }
 
     fn settings(per_minute: i64, only_with_others: bool) -> Settings {

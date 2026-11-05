@@ -71,9 +71,9 @@ impl Data {
     pub fn load(&mut self, text: &str) {
         let Ok(Value::Object(saved)) = serde_json::from_str::<Value>(text) else { return };
         for (name, table) in &mut self.tables {
-            let Some(rows) = saved[name]["rows"].as_array() else { continue };
+            let Some(rows) = saved.get(name).and_then(|t| t["rows"].as_array()) else { continue };
             table.rows = rows.iter().filter_map(|r| r.as_object().cloned()).collect();
-            table.next_id = saved[name]["next_id"].as_i64().unwrap_or(1);
+            table.next_id = saved.get(name).and_then(|t| t["next_id"].as_i64()).unwrap_or(1);
         }
     }
 

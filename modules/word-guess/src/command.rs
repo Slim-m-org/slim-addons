@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use crate::daily::{answer_for, day_of, Plays, Stored};
 use crate::game::{Game, TRIES};
 use crate::host::Host;
-use crate::scene::{render_board, render_landing, share_text, Board};
+use crate::scene::{game_day, render_board, render_landing, share_text, Board};
 use crate::words::WORDS;
 
 /// What the host tells a command about the run, beyond who is asking.
@@ -65,7 +65,7 @@ fn play<H: Host>(host: &H, input: &str, run: &Run) -> String {
 /// A private frame that says what went wrong, so a refused capability reads as a sentence, not a blank board.
 fn failure(why: &str) -> String {
     let game = Game::new(WORDS[0]);
-    let board = Board { game: &game, submit: "guess", controls: vec!["close"], status: why.to_owned(), state: String::new() };
+    let board = Board { game: &game, title: "Word Guess".to_owned(), submit: "guess", controls: vec!["close"], status: why.to_owned(), state: String::new() };
     render_board(&board)
 }
 
@@ -101,7 +101,7 @@ fn daily_board<H: Host>(host: &H, day: i64, player: &str, game: Option<Game>) ->
         format!("{} of {TRIES} tries used{}", game.guesses.len(), streak_text(streak))
     };
     let controls = if game.over() { vec!["share", "practice", "close"] } else { vec!["practice", "close"] };
-    Ok(render_board(&Board { game: &game, submit: "guess", controls, status, state: String::new() }))
+    Ok(render_board(&Board { game: &game, title: format!("Word Guess - day {}", game_day(day)), submit: "guess", controls, status, state: String::new() }))
 }
 
 fn streak_text(streak: i64) -> String {
@@ -177,7 +177,7 @@ fn practice_scene(game: &Game) -> String {
     } else {
         format!("practice - {} of {TRIES} tries used", game.guesses.len())
     };
-    render_board(&Board { game, submit: "pguess", controls: vec!["new practice", "today", "close"], status, state: String::new() })
+    render_board(&Board { game, title: "Word Guess - practice".to_owned(), submit: "pguess", controls: vec!["new practice", "today", "close"], status, state: String::new() })
 }
 
 #[cfg(test)]
@@ -199,7 +199,7 @@ mod tests {
     }
 
     fn letters(scene: &Value) -> String {
-        scene["ops"].as_array().unwrap().iter().filter_map(|o| o["s"].as_str()).collect::<Vec<_>>().join("")
+        scene["ops"].as_array().unwrap().iter().filter_map(|o| o["s"].as_str()).filter(|s| s.chars().count() == 1).collect::<Vec<_>>().join("")
     }
 
     fn wrong_word() -> &'static str {
@@ -216,12 +216,24 @@ mod tests {
         let host = FakeHost::default();
         let launched: Value = serde_json::from_str(&apply(&host, "wordguess", "", &run("ann", NOON)).unwrap()).unwrap();
         assert!(launched.get("private").is_none());
-        assert_eq!(launched["controls"], json!(["play today", "practice"]));
+        assert_eq!(launched["controls"], json!(["my board", "practice"]));
         assert_eq!(host.calls.get(), 0, "the landing needs nothing from the host");
         for action in ["close", "nonsense", ""] {
             assert!(act(&host, action, "ann", NOON).get("private").is_none(), "{action}");
         }
         assert!(apply(&host, "nope", "", &run("ann", NOON)).is_err());
+    }
+
+    #[test]
+    fn a_mid_game_player_opens_their_board_from_the_landing_without_losing_a_try() {
+        let host = FakeHost::default();
+        act(&host, &format!("guess:{}", wrong_word()), "ann", NOON);
+        let landing = act(&host, "", "ann", NOON + 1_000);
+        assert!(landing["controls"].as_array().unwrap().contains(&json!("my board")));
+        let mine = act(&host, "my board", "ann", NOON + 2_000);
+        assert_eq!(mine["private"], true);
+        assert_eq!(letters(&mine), wrong_word().to_uppercase());
+        assert!(mine["status"].as_str().unwrap().starts_with("1 of 6"), "{}", mine["status"]);
     }
 
     #[test]
@@ -311,7 +323,7 @@ mod tests {
         assert_eq!(shared["status"], "posted to the channel");
         let posts = host.posts.borrow();
         assert_eq!(posts.len(), 1);
-        assert!(posts[0].starts_with(&format!("Word Guess day {DAY} 2/6")), "{}", posts[0]);
+        assert!(posts[0].starts_with(&format!("Word Guess day {} 2/6", game_day(DAY))), "{}", posts[0]);
         assert!(!posts[0].to_lowercase().contains(answer_for(DAY)));
         assert!(posts[0].contains("#####"));
     }
