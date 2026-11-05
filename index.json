@@ -58,7 +58,7 @@
     {
       "id": "connect-four",
       "name": "Connect Four",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "summary": "Drop discs and get four in a row."
     },
     {
