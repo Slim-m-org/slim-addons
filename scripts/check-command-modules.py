@@ -44,6 +44,8 @@ SAMPLES = {
     ("tags", "edit"): ("rules Be nice", ""),
     ("tags", "remove"): ("rules", ""),
     ("xp", "catchup"): ("", "Awarded 2 sessions."),
+    ("transcript", "tidy"): ("", "Pruned 0 old transcripts."),
+    ("transcript", "post"): ("", "Unknown session."),
     ("word-filter", "filter-test"): ("hello there", "Nothing in that is filtered."),
     ("weather", "now"): ("Berlin", "Berlin, Germany: overcast, 12.3\u00b0C (feels like 10.1\u00b0C), wind 14 km/h"),
     ("undergrowth", "almanac"): ("", "a quiet day; nothing to post"),
