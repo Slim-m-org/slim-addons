@@ -41,6 +41,14 @@ class CatalogueTest(unittest.TestCase):
         change(manifest)
         path.write_text(json.dumps(manifest))
 
+    def test_an_archived_module_may_not_stay_listed(self):
+        archived = self.tmp / "archive" / "dice"
+        archived.mkdir(parents=True)
+        shutil.copy(self.tmp / "modules" / "dice" / "manifest.json", archived)
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("archived but still listed", done.stderr)
+
     def test_the_repo_as_it_stands_passes(self):
         done = self.run_check()
         self.assertEqual(done.returncode, 0, done.stderr)
