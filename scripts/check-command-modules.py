@@ -46,6 +46,8 @@ SAMPLES = {
     ("xp", "catchup"): ("", "Awarded 2 sessions."),
     ("word-filter", "filter-test"): ("hello there", "Nothing in that is filtered."),
     ("weather", "now"): ("Berlin", "Berlin, Germany: overcast, 12.3\u00b0C (feels like 10.1\u00b0C), wind 14 km/h"),
+    ("undergrowth", "almanac"): ("", "a quiet day; nothing to post"),
+    ("undergrowth", "herald"): ("", "no season has been played yet"),
 }
 
 # Commands that need stored data first: (module, command) -> commands to run before it, in the same kv store.

@@ -162,6 +162,12 @@
       "name": "Word filter",
       "version": "0.1.0",
       "summary": "Mask or block the words and patterns you list, before a message is stored."
+    },
+    {
+      "id": "undergrowth",
+      "name": "Undergrowth",
+      "version": "0.1.0",
+      "summary": "A fungal turf war living under your space: messages fall as leaves, reactions bring rain, calls bring warmth, and up to six colonies grow, fight and fruit mushrooms that sing."
     }
   ]
 }

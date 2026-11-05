@@ -131,3 +131,12 @@ fn a_file_at_its_cap_refuses_writes_and_state_survives_a_dump() {
     let next = call(&mut fresh, json!({"op": "insert", "values": {"user_id": "later"}}));
     assert!(next["rows"][0]["_id"].as_i64().unwrap() > 1);
 }
+
+#[test]
+fn a_data_file_missing_a_declared_table_starts_that_table_empty() {
+    let mut d = data();
+    d.load(r#"{"other": {"rows": [], "next_id": 1}}"#);
+    assert_eq!(call(&mut d, json!({"op": "count"}))["count"], 0);
+    seed(&mut d, &[("a", 1)]);
+    assert_eq!(call(&mut d, json!({"op": "count"}))["count"], 1);
+}

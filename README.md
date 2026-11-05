@@ -76,6 +76,7 @@ $R --kv-file /tmp/r --now-ms 1700001900000 --tick due modules/reminder/0.1.0/mod
 ```
 
 `--fuel <n>` meters the run and fails it with `out of fuel` when the budget is spent, the way slim refuses a module over its limit.
+It also prints what the run spent to stderr as `fuel used: <n>`, which is how to size `runtime.limits.fuel` from your heaviest frame.
 The scripts below pass the manifest's `runtime.limits.fuel` and a timeout built from `wall_ms`.
 Without `--fuel` the run is unmetered, and memory is never limited here, so a module that runs here can still be refused there for being too expensive.
 The manifest's `runtime.limits` is the authority on that.
