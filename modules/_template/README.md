@@ -13,12 +13,15 @@ See the deployment's `docs/modules/building-modules.md` for the full contract.
 manifest.json     what slim installs: id, version, permissions, extension points, the pinned artifact
 src/lib.rs        the ABI shim (alloc/run/memory). Rarely needs changing.
 src/command.rs    your logic. This is the part you write.
+Cargo.lock        pins the dependencies the wasm is built from. Commit it.
 ```
 
 ## Make it yours
 
 1. Copy this directory to `modules/<your-id>/` and, in `manifest.json`, set `id`, `name`, `summary`, `description`, `author`, and `homepage`. The `id` is a lowercase-hyphen slug and is also the `/id` alias for an app launch.
 2. Set the crate `name` in `Cargo.toml` (cosmetic - it only names the built .wasm).
+   Then run `cargo test` once so `Cargo.lock` follows the rename, and commit it.
+   CI builds with `--locked`, and the pinned wasm only rebuilds to the same bytes from a committed lock.
 3. Write your commands in `src/command.rs`: add an arm to `apply` per command, and declare each as a `command` extension point in the manifest. Add `slash-command`, `code-block-runner`, or `app` extension points to surface them.
 4. Grant your commands the right `permission` (declared in `permissions`); nobody holds a module's permission implicitly, so an admin grants it to a role.
 

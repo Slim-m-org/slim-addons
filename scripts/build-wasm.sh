@@ -8,7 +8,8 @@
 # would bake into the wasm (cargo home, the toolchain, the module checkout) is
 # remapped to a fixed one. The rust-src component, when installed, is mapped to
 # the /rustc/<commit> paths a toolchain without it already uses; otherwise the
-# bytes would depend on whether that component is present. A module's own
+# bytes would depend on whether that component is present. The build is always
+# `--locked` against the module's committed Cargo.lock. A module's own
 # `.cargo/config.toml` rustflags are merged in, because RUSTFLAGS in the
 # environment replaces them rather than adding to them.
 set -euo pipefail
@@ -43,14 +44,13 @@ fi
 target_dir=$(mktemp -d)
 trap 'rm -rf "$target_dir"' EXIT
 
-locked=()
-[[ -f "$dir/Cargo.lock" ]] && locked=(--locked)
+[[ -f "$dir/Cargo.lock" ]] || { echo "no Cargo.lock in $dir; run cargo generate-lockfile there and commit it, or the bytes depend on the day's crates" >&2; exit 1; }
 
 encoded=$(printf '%s\x1f' "${flags[@]}")
 (
   cd "$dir"
   CARGO_ENCODED_RUSTFLAGS="${encoded%$'\x1f'}" CARGO_TARGET_DIR="$target_dir" \
-    cargo build "${locked[@]}" --release --target wasm32-unknown-unknown
+    cargo build --locked --release --target wasm32-unknown-unknown
 )
 
 wasm=$(find "$target_dir/wasm32-unknown-unknown/release" -maxdepth 1 -name '*.wasm' | head -1)

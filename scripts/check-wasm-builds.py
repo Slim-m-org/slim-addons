@@ -7,6 +7,8 @@ check-catalogue.py only ties a wasm to the sha256 in its own manifest, so a
 module whose source changed while its wasm did not would pass. This builds the
 manifest's version with scripts/build-wasm.sh (pinned toolchain, remapped
 paths, so the bytes do not depend on the machine) and fails on any difference.
+A module with no committed Cargo.lock fails too: it would build against whatever
+crates the registry serves that day.
 
 scripts/wasm-unreproduced.txt lists the modules whose committed wasm was built
 before that recipe existed and so cannot match yet. For those, --base falls
@@ -72,6 +74,9 @@ if base:
 with tempfile.TemporaryDirectory() as tmp:
     for mid in modules:
         manifest = json.loads((root / "modules" / mid / "manifest.json").read_text())
+        if not (root / "modules" / mid / "Cargo.lock").is_file():
+            fail(mid, "has no Cargo.lock; run cargo generate-lockfile in it and commit the result, because an unlocked build is not reproducible")
+            continue
         sha, error = built_sha(root / "modules" / mid, pathlib.Path(tmp) / f"{mid}.wasm")
         if sha is None:
             fail(mid, f"the wasm build failed:\n{error}")
