@@ -1,8 +1,8 @@
 //! Awarding XP: a push is only a trigger, the voice log is the truth.
 //!
 //! Every pass reads the closed sessions after the cursor, awards them, and moves the cursor
-//! only once the writes succeeded. A session is awarded at most once even if the cursor
-//! write is lost, because each member remembers the last session id taken for them.
+//! to the host's `next` only once the writes succeeded. A session is awarded at most once even
+//! if the cursor write is lost, because each member remembers the last session id taken for them.
 
 use serde_json::Value;
 
@@ -11,8 +11,6 @@ use crate::host::Host;
 use crate::settings::Settings;
 use crate::store::Store;
 
-/// Rows one `log.read` asks for; the host caps it at 200.
-const PAGE: i64 = 200;
 /// Calls a member costs: the one statement that takes the session and pays for it.
 const CALLS_PER_MEMBER: u32 = 1;
 /// Calls a pass spends besides the members: the log read, the rows of the members, the new rows and the cursor write.
@@ -36,34 +34,17 @@ pub fn catch_up<H: Host>(store: &Store<H>, settings: &Settings) -> Result<Report
         if members == 0 {
             break;
         }
-        let (rows, next) = store.sessions_after(report.cursor, PAGE)?;
-        if rows.is_empty() {
+        // A row names at most one member, so a page this long never outgrows the pass.
+        let (rows, next) = store.sessions_after(report.cursor, i64::from(members))?;
+        if next <= report.cursor {
             break;
         }
-        let (batch, resume) = take_members(&rows, members as usize, next);
-        award_batch(store, settings, batch)?;
-        store.set_cursor(resume)?;
-        report.sessions += batch.len();
-        report.cursor = resume;
-        if resume == next && rows.len() < PAGE as usize {
-            break;
-        }
+        award_batch(store, settings, &rows)?;
+        store.set_cursor(next)?;
+        report.sessions += rows.len();
+        report.cursor = next;
     }
     Ok(report)
-}
-
-/// The leading rows that touch at most `members` members, and the cursor that follows them.
-fn take_members(rows: &[Session], members: usize, next: i64) -> (&[Session], i64) {
-    let mut seen: Vec<&str> = Vec::new();
-    for (i, row) in rows.iter().enumerate() {
-        if !seen.contains(&row.user_id.as_str()) {
-            if seen.len() == members {
-                return (&rows[..i], rows[i - 1].id);
-            }
-            seen.push(&row.user_id);
-        }
-    }
-    (rows, next)
 }
 
 fn group_by_member(rows: &[Session]) -> Vec<(String, Vec<&Session>)> {

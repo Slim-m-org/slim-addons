@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 
 use crate::fake::FakeHost;
 use crate::handle;
+use crate::host::Host;
 
 const MIN: i64 = 60_000;
 
@@ -107,7 +108,7 @@ fn a_backlog_bigger_than_one_run_drains_over_several_without_loss() {
 }
 
 #[test]
-fn a_busy_member_with_many_sessions_is_one_batch() {
+fn a_busy_member_with_many_sessions_is_paid_in_full() {
     let host = FakeHost::default();
     for id in 1..=150 {
         host.push_session(id, "ada", 0, MIN, 0);
@@ -265,4 +266,73 @@ fn the_statement_that_takes_a_message_slot_also_pays_it_once_per_cooldown() {
     assert!(!store.pay_message("ada", 1_059_999, 60_000, 3).unwrap());
     assert!(store.pay_message("ada", 1_060_000, 60_000, 3).unwrap());
     assert_eq!((host.xp_of("ada"), host.field("ada", "messages")), (6, 2));
+}
+
+#[test]
+fn the_fake_refuses_the_in_lists_the_host_refuses() {
+    let host = FakeHost::default();
+    let query = |values: Vec<String>| {
+        let filter = json!([{"col": "user_id", "op": "in", "val": values}]);
+        host.call(&json!({"capability": "data.store", "op": "query", "table": "xp", "where": filter}))
+    };
+    assert!(query(vec![]).unwrap_err().contains("1 to 100"));
+    assert!(query((0..101).map(|i| format!("u{i}")).collect()).unwrap_err().contains("1 to 100"));
+    assert!(query(vec!["ada".into()]).is_ok());
+}
+
+#[test]
+fn asking_the_store_about_nobody_makes_no_host_call() {
+    let host = FakeHost::default();
+    let store = crate::store::Store::new(&host);
+    assert!(store.members(&[]).unwrap().is_empty());
+    assert!(store.totals(&[]).unwrap().is_empty());
+    assert_eq!(host.calls.get(), 0);
+}
+
+#[test]
+fn a_call_only_a_bot_was_in_moves_the_cursor_and_fails_nothing() {
+    let host = FakeHost::default();
+    host.push_bot_session(1, "bot", 0, 10 * MIN);
+    assert_eq!(voice_event(&host)["ok"], true);
+    assert!(host.xp.borrow().is_empty());
+    assert_eq!(host.cursor(), 1);
+    host.push_session(2, "ada", 0, 10 * MIN, 0);
+    assert_eq!(voice_event(&host)["ok"], true);
+    assert_eq!((host.xp_of("ada"), host.cursor()), (50, 2));
+}
+
+#[test]
+fn a_whole_page_of_bots_does_not_hold_back_the_people_after_it() {
+    let host = FakeHost::default();
+    for id in 1..=200 {
+        host.push_bot_session(id, "bot", 0, 10 * MIN);
+    }
+    host.push_session(201, "ada", 0, 10 * MIN, 0);
+    assert_eq!(run(&host, "catchup", json!(""), json!({}))["ok"], true);
+    assert_eq!((host.xp_of("ada"), host.cursor()), (50, 201));
+}
+
+#[test]
+fn a_page_of_calls_the_module_cannot_see_does_not_pin_the_cursor() {
+    let host = FakeHost::default();
+    for id in 1..=200 {
+        host.push_hidden_session(id, "ghost");
+    }
+    host.push_session(201, "ada", 0, 10 * MIN, 0);
+    assert_eq!(run(&host, "catchup", json!(""), json!({}))["ok"], true);
+    assert_eq!((host.xp_of("ada"), host.cursor()), (50, 201));
+}
+
+#[test]
+fn calls_that_close_out_of_join_order_are_all_read_when_a_backlog_spans_runs() {
+    let host = FakeHost::default();
+    for id in 2..=60 {
+        host.push_session(id, &format!("user{id}"), 0, 2 * MIN, 0);
+    }
+    host.push_session(1, "user1", 0, 2 * MIN, 0);
+    for _ in 0..4 {
+        assert_eq!(run(&host, "catchup", json!(""), json!({}))["ok"], true);
+    }
+    assert_eq!(host.cursor(), 60, "the cursor is a place in close order, never a session id");
+    assert!((1..=60).all(|id| host.xp_of(&format!("user{id}")) == 10), "every call paid exactly once");
 }

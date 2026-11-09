@@ -60,7 +60,7 @@ impl<'a, H: Host> Store<'a, H> {
         self.data("upsert", "meta", json!({"values": values, "on": "name"})).map(|_| ())
     }
 
-    /// Closed sessions after `cursor`, in id order, and the cursor to continue from.
+    /// Closed sessions after `cursor`, in close order, and the host's cursor to continue from.
     pub fn sessions_after(&self, cursor: i64, limit: i64) -> Result<(Vec<Session>, i64), String> {
         let reply = self.send(json!({"capability": "log.read", "log": "voice.sessions", "after": cursor, "limit": limit}))?;
         let rows = reply["rows"].as_array().map(Vec::as_slice).unwrap_or(&[]);
@@ -68,8 +68,11 @@ impl<'a, H: Host> Store<'a, H> {
         Ok((sessions, reply["next"].as_i64().unwrap_or(cursor)))
     }
 
-    /// The rows of the members that have one, in one call.
+    /// The rows of the members that have one, in one call; the host refuses an empty `in` list, so nobody costs none.
     pub fn members(&self, users: &[String]) -> Result<HashMap<String, Member>, String> {
+        if users.is_empty() {
+            return Ok(HashMap::new());
+        }
         let reply = self.data("query", "xp", json!({"where": [{"col": "user_id", "op": "in", "val": users}], "limit": 200}))?;
         let rows = reply["rows"].as_array().map(Vec::as_slice).unwrap_or(&[]);
         Ok(rows
@@ -117,6 +120,9 @@ impl<'a, H: Host> Store<'a, H> {
 
     /// XP totals for the members that have a row.
     pub fn totals(&self, users: &[String]) -> Result<HashMap<String, i64>, String> {
+        if users.is_empty() {
+            return Ok(HashMap::new());
+        }
         let filter = json!([{"col": "user_id", "op": "in", "val": users}]);
         let reply = self.data("query", "xp", json!({"where": filter, "limit": 100}))?;
         let rows = reply["rows"].as_array().map(Vec::as_slice).unwrap_or(&[]);

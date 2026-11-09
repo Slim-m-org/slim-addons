@@ -3,7 +3,7 @@
   "addon_api": 1,
   "id": "xp",
   "name": "XP and levels",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "summary": "Members earn XP for time in voice calls and show a level bar on their profile.",
   "description": "Members earn XP for the minutes they spend in voice calls, and a level bar shows on their profile with a short Lv badge next to their name. By default time alone in a call earns nothing, and messages earn nothing; both can be changed in the module's settings, along with the XP rate and how steep the levels get. It reads closed call sessions (log.read) so no call is missed while the server restarts, listens for call and message events (events), and keeps its totals in its own small database (data.store). An admin approves each when installing.",
   "author": "slim-m",
@@ -18,8 +18,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/xp/0.1.1/module.wasm",
-    "sha256": "7ef84ada211b2071b9ad5e4df0d5b840945f4db21abacedc9ddd3b7009b58cc5"
+    "path": "modules/xp/0.1.2/module.wasm",
+    "sha256": "afc0f044b262d2305a7b8952c9fcac81262e4e4a2807d4b9d2d52ff67b5cf25d"
   },
   "permissions": [
     {
@@ -176,6 +176,13 @@
     }
   ],
   "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "A call that only a bot was in no longer makes the catch-up fail, which could switch the module off after a few tries.",
+        "A backlog that takes several runs to catch up no longer skips calls."
+      ]
+    },
     {
       "version": "0.1.1",
       "changes": [
