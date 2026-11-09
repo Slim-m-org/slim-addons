@@ -1,5 +1,6 @@
 //! An in-memory slim for tests: it answers `data.store` and `log.read` the way the host does,
-//! including the unique columns, the 64-call budget and the 200-row log page.
+//! including the unique columns, the `in` list bounds, the 64-call budget, the 200-row log page
+//! and a log cursor that counts closes, not session ids.
 
 use std::cell::{Cell, RefCell};
 
@@ -34,10 +35,21 @@ impl FakeHost {
         self.calls.set(0);
     }
 
+    /// Closes a session now: `id` is its join order and the log cursor is its place in close order.
     pub fn push_session(&self, id: i64, user: &str, joined: i64, left: i64, alone: i64) {
+        let closed_seq = self.log.borrow().len() as i64 + 1;
         self.log.borrow_mut().push(json!({
-            "id": id, "user_id": user, "channel_id": "c", "joined_at_ms": joined, "left_at_ms": left, "alone_ms": alone
+            "id": id, "user_id": user, "channel_id": "c", "joined_at_ms": joined, "left_at_ms": left, "alone_ms": alone,
+            "closed_seq": closed_seq
         }));
+    }
+
+    /// A closed session in a channel the module cannot see: the host reads it but returns no row.
+    pub fn push_hidden_session(&self, id: i64, user: &str) {
+        self.push_session(id, user, 0, 1, 0);
+        if let Some(row) = self.log.borrow_mut().last_mut() {
+            row["hidden"] = json!(true);
+        }
     }
 
     pub fn push_bot_session(&self, id: i64, user: &str, joined: i64, left: i64) {
@@ -81,6 +93,13 @@ fn matches(row: &Row, filters: &Value) -> bool {
     })
 }
 
+fn without_bookkeeping(mut row: Value) -> Value {
+    if let Some(fields) = row.as_object_mut() {
+        fields.retain(|name, _| name != "closed_seq" && name != "hidden");
+    }
+    row
+}
+
 fn add_to(row: &mut Row, add: &Map<String, Value>) {
     for (col, by) in add {
         let now = row.get(col).and_then(Value::as_i64).unwrap_or(0);
@@ -92,13 +111,25 @@ fn refusal(message: &str) -> Result<Value, String> {
     Err(message.to_string())
 }
 
+/// The host takes an `in` list of 1 to 100 values and refuses any other.
+fn check_in_lists(filters: &Value) -> Result<(), String> {
+    let mut lists = filters.as_array().into_iter().flatten().filter(|f| f["op"] == "in");
+    let sized = lists.all(|f| f["val"].as_array().is_some_and(|values| (1..=100).contains(&values.len())));
+    if sized {
+        Ok(())
+    } else {
+        Err("in needs a list of 1 to 100 values".to_string())
+    }
+}
+
 impl FakeHost {
     fn log_read(&self, request: &Value) -> Result<Value, String> {
         let after = request["after"].as_i64().unwrap_or(0);
         let limit = request["limit"].as_i64().unwrap_or(100).clamp(1, 200) as usize;
-        let rows: Vec<Value> =
-            self.log.borrow().iter().filter(|r| r["id"].as_i64().unwrap() > after).take(limit).cloned().collect();
-        let next = rows.last().map_or(after, |r| r["id"].as_i64().unwrap());
+        let seq = |r: &Value| r["closed_seq"].as_i64().unwrap();
+        let scanned: Vec<Value> = self.log.borrow().iter().filter(|r| seq(r) > after).take(limit).cloned().collect();
+        let next = scanned.last().map_or(after, seq);
+        let rows: Vec<Value> = scanned.into_iter().filter(|r| r["hidden"] != true).map(without_bookkeeping).collect();
         Ok(json!({"ok": true, "rows": rows, "next": next}))
     }
 
@@ -107,6 +138,7 @@ impl FakeHost {
         let unique = if request["table"] == "xp" { "user_id" } else { "name" };
         let mut rows = table.borrow_mut();
         let filters = &request["where"];
+        check_in_lists(filters)?;
         let mut changed = 0;
         let mut out: Vec<Row> = Vec::new();
         match request["op"].as_str().unwrap() {
