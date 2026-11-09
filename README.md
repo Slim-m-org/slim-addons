@@ -52,6 +52,7 @@ $R --caller alice modules/tic-tac-toe/0.2.0/module.wasm play ''
 ```
 
 A module that uses `kv.store` can run here too: the runner answers `slim.host_call` with an in-memory store that enforces slim's bounds, and `--kv-file <path>` keeps it between runs.
+A `slim.host_call` request over 128 KiB gets no answer at all, as it does in slim, whichever capability it names.
 
 A module that uses `net.fetch` runs here against canned responses, so an author can iterate before pushing anything.
 `--fetch-file <path>` is a JSON object keyed by full URL:
@@ -98,6 +99,7 @@ Every run carries `settings`: the manifest's defaults, with `--setting key=value
 `--event <name> '<data json>'` runs `@event` the way slim delivers a subscribed event, as the module's own principal; it refuses an event the manifest does not subscribe to, and one missing a `data` field.
 It knows every event up to add-on API 5, and slim-m's `docs/modules/event-fixtures/*.json` hold a ready `data` for each API 5 one.
 `--slot <kind> <name> <user,ids>` runs `@slot` as the viewer `--caller` names, and fails the run when the answer breaks the `slot/1` contract (an unknown node type, no `fallback`, an answer for a member nobody asked about).
+`--bot <id>` (repeatable, `--slot` only) marks which of those members are bot accounts, which is what the input's `bot_ids` carries.
 
 ```bash
 $R --data-file /tmp/d --log-file sessions.json --tick catchup modules/xp/0.1.0/module.wasm
@@ -156,6 +158,7 @@ When you ship a new version, add its entry at the top.
 `python3 scripts/check-wasm-builds.py` rebuilds each module's wasm with [`scripts/build-wasm.sh`](scripts/build-wasm.sh) and fails if it differs from the one the manifest pins, so a source change cannot ship without a rebuilt wasm and a new version.
 The build uses the toolchain pinned in `rust-toolchain.toml` and remaps every absolute path (cargo home, toolchain, checkout) to a fixed one, so the same source gives the same bytes on any machine.
 `scripts/package-module.sh` uses the same recipe.
+Every module commits its `Cargo.lock`: the build and CI's `cargo test` pass `--locked`, and this check fails a module that has none.
 Rustup reads the pin automatically; a machine without that exact toolchain installed needs `rustup toolchain install 1.94.1` first.
 
 Wasm files published before that recipe cannot match a rebuild.

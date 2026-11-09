@@ -35,17 +35,16 @@ struct Col {
     unique: bool,
 }
 
-#[derive(Default)]
 struct Table {
     cols: Vec<Col>,
     rows: Vec<Row>,
     next_id: i64,
+    max_bytes: usize,
 }
 
 /// The tables a manifest's `data` block declares, and what they hold.
 pub struct Data {
     tables: BTreeMap<String, Table>,
-    max_bytes: usize,
 }
 
 struct Cond {
@@ -58,21 +57,25 @@ impl Data {
     /// `None` when the manifest declares no tables.
     pub fn from_manifest(manifest: &Value) -> Option<Data> {
         let declared = manifest["data"]["tables"].as_array()?;
+        let mb = manifest["data"]["max_mb"].as_u64().unwrap_or(8);
+        let max_bytes = usize::try_from(mb).unwrap_or(8) * 1024 * 1024;
         let mut tables = BTreeMap::new();
         for t in declared {
             let cols = t["columns"].as_array()?.iter().map(parse_col).collect::<Option<Vec<_>>>()?;
-            tables.insert(t["name"].as_str()?.to_owned(), Table { cols, rows: Vec::new(), next_id: 1 });
+            tables.insert(t["name"].as_str()?.to_owned(), Table { cols, rows: Vec::new(), next_id: 1, max_bytes });
         }
-        let mb = manifest["data"]["max_mb"].as_u64().unwrap_or(8);
-        Some(Data { tables, max_bytes: usize::try_from(mb).unwrap_or(8) * 1024 * 1024 })
+        Some(Data { tables })
     }
 
     /// Restores what `dump` wrote; a table the manifest no longer declares is dropped.
+    ///
+    /// Each row is rebuilt against the current columns, so one saved before a column was added reads it as null.
     pub fn load(&mut self, text: &str) {
         let Ok(Value::Object(saved)) = serde_json::from_str::<Value>(text) else { return };
         for (name, table) in &mut self.tables {
             let Some(rows) = saved.get(name).and_then(|t| t["rows"].as_array()) else { continue };
-            table.rows = rows.iter().filter_map(|r| r.as_object().cloned()).collect();
+            let restored = rows.iter().filter_map(|r| table.restore_row(r.as_object()?)).collect();
+            table.rows = restored;
             table.next_id = saved.get(name).and_then(|t| t["next_id"].as_i64()).unwrap_or(1);
         }
     }
@@ -93,7 +96,6 @@ impl Data {
 
     fn run(&mut self, request: &Value) -> Result<Value, String> {
         let name = request["table"].as_str().unwrap_or_default();
-        let max_bytes = self.max_bytes;
         let table = self.tables.get_mut(name).ok_or("unknown table")?;
         let op = request["op"].as_str().unwrap_or_default();
         if request.get("add").is_some() && !matches!(op, "upsert" | "update") {
@@ -114,9 +116,6 @@ impl Data {
             "increment" => table.increment(request),
             _ => Err("unknown data.store op".into()),
         }?;
-        if outcome.writes && table.bytes() > max_bytes {
-            return Err("data.store is full for this module".into());
-        }
         Ok(outcome.reply())
     }
 }
@@ -137,7 +136,6 @@ struct Outcome {
     rows: Vec<Row>,
     changed: usize,
     scalar: Option<Value>,
-    writes: bool,
 }
 
 impl Outcome {
@@ -159,14 +157,21 @@ impl Table {
         self.col(name).map(|c| c.ty).ok_or_else(|| "unknown column".to_owned())
     }
 
-    fn bytes(&self) -> usize {
-        self.rows.iter().map(|r| Value::Object(r.clone()).to_string().len()).sum()
-    }
-
     fn fresh_row(&self, id: i64) -> Row {
         let mut row: Row = self.cols.iter().map(|c| (c.name.clone(), Value::Null)).collect();
         row.insert(ID.into(), json!(id));
         row
+    }
+
+    /// A saved row on the current columns: unknown keys dropped, new columns null, `None` without an `_id`.
+    fn restore_row(&self, saved: &Row) -> Option<Row> {
+        let mut row = self.fresh_row(saved.get(ID)?.as_i64()?);
+        for col in &self.cols {
+            if let Some(value) = saved.get(&col.name) {
+                row.insert(col.name.clone(), value.clone());
+            }
+        }
+        Some(row)
     }
 
     fn assignments(&self, values: &Map<String, Value>) -> Result<Vec<(String, Value)>, String> {
@@ -199,6 +204,7 @@ impl Table {
         Ok(out)
     }
 
+    /// Swaps in `rows` only if they hold unique values and fit the file cap, so a refusal changes nothing.
     fn commit(&mut self, rows: Vec<Row>) -> Result<(), String> {
         for col in self.cols.iter().filter(|c| c.unique) {
             let mut seen: Vec<&Value> = Vec::new();
@@ -208,6 +214,9 @@ impl Table {
                 }
                 seen.push(row);
             }
+        }
+        if serialized_bytes(&rows) > self.max_bytes {
+            return Err("data.store is full for this module".into());
         }
         self.rows = rows;
         Ok(())
@@ -248,7 +257,7 @@ impl Table {
         }
         self.commit(rows)?;
         self.next_id = next;
-        Ok(Outcome { changed: ids.len(), rows: ids, writes: true, ..Outcome::default() })
+        Ok(Outcome { changed: ids.len(), rows: ids, ..Outcome::default() })
     }
 
     fn upsert(&mut self, req: &Value) -> Result<Outcome, String> {
@@ -271,6 +280,7 @@ impl Table {
         }
         let mut rows = self.rows.clone();
         let existing = rows.iter().position(|r| !key_value.is_null() && r[&key] == key_value);
+        let mut next_id = self.next_id;
         let (index, changed) = match existing {
             Some(i) => {
                 let sets = values.iter().any(|c| c.0 != key) || !adds.is_empty();
@@ -278,8 +288,8 @@ impl Table {
                 (i, usize::from(sets))
             }
             None => {
-                let mut row = self.fresh_row(self.next_id);
-                self.next_id += 1;
+                let mut row = self.fresh_row(next_id);
+                next_id += 1;
                 row.extend(values);
                 apply(&mut row, std::iter::empty(), &adds)?;
                 rows.push(row);
@@ -288,7 +298,8 @@ impl Table {
         };
         let returned = if adds.is_empty() { Vec::new() } else { vec![rows[index].clone()] };
         self.commit(rows)?;
-        Ok(Outcome { rows: returned, changed, writes: true, ..Outcome::default() })
+        self.next_id = next_id;
+        Ok(Outcome { rows: returned, changed, ..Outcome::default() })
     }
 
     fn update(&mut self, req: &Value) -> Result<Outcome, String> {
@@ -309,7 +320,7 @@ impl Table {
             changed += 1;
         }
         self.commit(rows)?;
-        Ok(Outcome { changed, writes: true, ..Outcome::default() })
+        Ok(Outcome { changed, ..Outcome::default() })
     }
 
     fn delete(&mut self, req: &Value) -> Result<Outcome, String> {
@@ -383,7 +394,7 @@ impl Table {
             changed += 1;
         }
         self.commit(rows)?;
-        Ok(Outcome { changed, writes: true, ..Outcome::default() })
+        Ok(Outcome { changed, ..Outcome::default() })
     }
 
     fn conditions(&self, req: &Value) -> Result<Vec<Cond>, String> {
@@ -443,6 +454,10 @@ impl Table {
         }
         Ok(out)
     }
+}
+
+fn serialized_bytes(rows: &[Row]) -> usize {
+    rows.iter().map(|r| Value::Object(r.clone()).to_string().len()).sum()
 }
 
 fn row_limit(req: &Value) -> Result<usize, String> {

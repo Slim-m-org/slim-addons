@@ -22,6 +22,8 @@ const MAX_CALLS_PER_RUN: u32 = 64;
 /// Host calls of any kind in one run, refused ones included.
 const MAX_HOST_CALLS_PER_RUN: u32 = 128;
 const MAX_POSTS_PER_RUN: u32 = 3;
+/// Largest request slim reads from a module; a bigger one is refused before anything is copied.
+const MAX_HOST_CALL_REQUEST_BYTES: usize = 128 * 1024;
 
 #[derive(Default)]
 pub struct Host {
@@ -47,12 +49,19 @@ pub fn link(linker: &mut Linker<Host>) -> Result<(), String> {
 
 fn host_call(mut caller: Caller<'_, Host>, ptr: i32, len: i32) -> i64 {
     let Some(Extern::Memory(memory)) = caller.get_export("memory") else { return 0 };
-    let mut request = vec![0u8; len.max(0) as usize];
-    if memory.read(&caller, ptr as u32 as usize, &mut request).is_err() {
+    let Some((ptr, len)) = request_span(ptr, len) else { return 0 };
+    let mut request = vec![0u8; len];
+    if memory.read(&caller, ptr, &mut request).is_err() {
         return 0;
     }
     let reply = handle(caller.data_mut(), &String::from_utf8_lossy(&request));
     write_reply(&mut caller, &memory, reply.as_bytes()).unwrap_or(0)
+}
+
+/// Where a request lies in the module's memory, or `None` where slim answers nothing.
+fn request_span(ptr: i32, len: i32) -> Option<(usize, usize)> {
+    let len = usize::try_from(len).ok().filter(|len| *len <= MAX_HOST_CALL_REQUEST_BYTES)?;
+    Some((usize::try_from(ptr).ok()?, len))
 }
 
 fn write_reply(caller: &mut Caller<'_, Host>, memory: &Memory, reply: &[u8]) -> Option<i64> {
@@ -270,6 +279,57 @@ mod tests {
     #[test]
     fn net_fetch_without_a_fetch_file_says_how_to_get_one() {
         assert!(call(&mut Host::default(), r#"{"capability":"net.fetch","url":"https://a.test/"}"#).contains("--fetch-file"));
+    }
+
+    fn leb128(mut n: i64) -> Vec<u8> {
+        let mut out = Vec::new();
+        loop {
+            let byte = (n & 0x7f) as u8;
+            n >>= 7;
+            let done = (n == 0 && byte & 0x40 == 0) || (n == -1 && byte & 0x40 != 0);
+            out.push(if done { byte } else { byte | 0x80 });
+            if done {
+                return out;
+            }
+        }
+    }
+
+    fn section(id: u8, body: &[u8]) -> Vec<u8> {
+        assert!(body.len() < 0x80, "a one-byte size is all this builder writes");
+        [&[id, body.len() as u8][..], body].concat()
+    }
+
+    /// A module whose `run` makes one `host_call(0, len)` and returns what that answers.
+    fn module_calling_host_with(len: i32) -> Vec<u8> {
+        let mut run = vec![0x00, 0x41, 0x00, 0x41];
+        run.extend(leb128(len.into()));
+        run.extend([0x10, 0x00, 0x0b]);
+        let alloc = [0x04, 0x00, 0x41, 0x00, 0x0b];
+        let code = [&[0x02][..], &alloc, &[run.len() as u8], &run].concat();
+        let exports = b"\x03\x06memory\x02\x00\x05alloc\x00\x01\x03run\x00\x02";
+        [
+            &b"\0asm\x01\0\0\0"[..],
+            &section(1, &[0x02, 0x60, 0x01, 0x7f, 0x01, 0x7f, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7e]),
+            &section(2, b"\x01\x04slim\x09host_call\x00\x01"),
+            &section(3, &[0x02, 0x00, 0x01]),
+            &section(5, &[0x01, 0x00, 0x04]),
+            &section(7, exports),
+            &section(10, &code),
+        ]
+        .concat()
+    }
+
+    fn answer_to_a_request_of(len: i32) -> String {
+        crate::run_bytes(&module_calling_host_with(len), &crate::cli::Options::command("m.wasm", "go", "")).unwrap()
+    }
+
+    #[test]
+    fn a_request_over_slims_cap_is_answered_with_nothing() {
+        assert!(answer_to_a_request_of(64).contains("capability not available"));
+        assert!(answer_to_a_request_of(MAX_HOST_CALL_REQUEST_BYTES as i32).contains("capability not available"));
+        assert_eq!(answer_to_a_request_of(MAX_HOST_CALL_REQUEST_BYTES as i32 + 1), "");
+        assert_eq!(answer_to_a_request_of(i32::MAX), "");
+        assert_eq!(answer_to_a_request_of(-1), "");
     }
 
     #[test]
