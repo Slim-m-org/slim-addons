@@ -114,7 +114,9 @@ Install on a dev deployment for those (`scripts/e2e-xp.py` plays signed webhooks
 
 If your module draws, `scripts/check-scene-ops.py` reads its output the way the
 client's parser does and reports anything that would be silently dropped - an op
-that does not exist, a key on the wrong op, a colour that is not a scene colour.
+that does not exist, a key on the wrong op, a colour that is not a scene colour,
+an input with nothing to submit, a path with no complete step, an image the
+client cannot decode or a ninth one in the same scene.
 Pass it the runner, the wasm, the command, and as many inputs as you want
 covered:
 
@@ -144,7 +146,7 @@ The scripts assert behaviour, not wording, where the wording is not the point: t
 ## Checks
 
 CI (`.github/workflows/ci.yml`) runs on every pull request and push to main.
-It runs `cargo test` for each module, `scripts/check-wasm-builds.py`, then `scripts/check-catalogue.py`, then `scripts/check-app-scenes.py`, which launches every app and checks the frame for each control, tap target and input its scene offers, as two different callers, then `scripts/check-command-modules.py`, which runs each command-only module through the wasm abi with a fixed input, then `scripts/play-modules.py`, which plays each game through its script.
+It runs `cargo test` for each module, `scripts/check-wasm-builds.py`, then `scripts/check-catalogue.py`, then `scripts/check-app-scenes.py`, which launches every app and checks the frame for each control, tap target and input its scene offers, as two different callers, then `scripts/check-command-modules.py`, which runs each command-only module through the wasm abi with a fixed input, held to its manifest's fuel and wall limits and checking what it posts, then `scripts/play-modules.py`, which plays each game through its script.
 Right after the `cargo test` loop, `python3 -m unittest discover -s scripts -p 'test_*.py'` runs the unit tests for these scripts and `cargo test` in `tools/run-module` runs the runner's own; `scripts/check-module-tests.py` fails a module whose `src` has no `#[test]`.
 
 Each module keeps its logic in plain Rust with unit tests, so `cd modules/<id> && cargo test` runs them with no wasm involved.

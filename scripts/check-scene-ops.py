@@ -13,20 +13,23 @@
 #
 # It is deliberately a copy of the contract rather than an import of it: the
 # renderer lives in the slim-m repo, and a registry that could only be
-# validated from a checkout of another repo would not get validated.
+# validated from a checkout of another repo would not get validated. The files
+# named below are in slim-m, under client/packages/app/lib/src/features/modules/widgets/;
+# re-sync this table from them when the parser changes.
 import json
+import math
 import pathlib
 import re
 import subprocess
 import sys
 
-# client/packages/app/lib/src/widgets/module_scene_painter.dart, resolveSceneColor.
+# module_scene_painter.dart, resolveSceneColor.
 COLOURS = {
     "bg", "surface", "sunken", "accent", "accent-soft",
     "muted", "text", "border", "danger",
 }
 
-# client/packages/app/lib/src/widgets/module_scene_parse.dart, _parseOp. The value is
+# module_scene_parse.dart, _parseOp. The value is
 # the set of keys that op actually reads; anything else is ignored, and a key
 # the op needs but does not get makes the whole op vanish.
 OPS = {
@@ -41,8 +44,9 @@ OPS = {
     "notes": {"notes"},
 }
 
-# An op that is dropped entirely when this key is missing.
+# An op that is dropped entirely when this key is missing or is not a string (a list, for notes).
 REQUIRED = {"cells": "data", "text": "s", "notes": "notes", "path": "d", "input": "submit", "image": "b64"}
+REQUIRED_TYPE = {"notes": list}
 
 # Keys that name a colour, so a typo falls back rather than failing.
 COLOUR_KEYS = {"fill", "stroke"}
@@ -60,6 +64,13 @@ PATH_TOKEN = re.compile(rf"[A-Za-z]|{_NUMBER}{_EXPONENT}")
 
 # module_scene_sweep.dart, SceneSweep.maxPerScene: later animated ops draw still.
 MAX_SWEEPS = 8
+
+# module_scene.dart, ImageOp: the base64 length ceiling, and how many images draw in one scene.
+MAX_IMAGE_CHARS = 88 * 1024
+MAX_IMAGES = 8
+
+# What Dart's base64Decode accepts: both alphabets, whole groups of four, padding only at the end.
+BASE64 = re.compile(r"(?:[A-Za-z0-9+/_-]{4})*(?:[A-Za-z0-9+/_-]{2}==|[A-Za-z0-9+/_-]{3}=)?")
 
 
 def is_colour(value):
@@ -97,17 +108,21 @@ def manifest_limits(wasm):
         return {}
 
 
-def run_module(runner, wasm, command, payload, caller=None):
+def run_budget(wasm):
+    """(runner flags, timeout in seconds) that hold a run to the manifest's fuel and wall limits."""
     limits = manifest_limits(wasm)
+    flags = ["--fuel", str(int(limits["fuel"]))] if "fuel" in limits else []
+    # The manifest's wall limit with slack for a cold CI runner, so a hang fails rather than stalls.
+    return flags, limits.get("wall_ms", 1000) / 1000 * 10 + 10
+
+
+def run_module(runner, wasm, command, payload, caller=None):
     argv = [runner]
     if caller is not None:
         argv += ["--caller", caller]
-    if "fuel" in limits:
-        argv += ["--fuel", str(int(limits["fuel"]))]
-    # The manifest's wall limit with slack for a cold CI runner, so a hang fails rather than stalls.
-    timeout = limits.get("wall_ms", 1000) / 1000 * 10 + 10
+    fuel, timeout = run_budget(wasm)
     try:
-        out = subprocess.run(argv + [wasm, command, payload], capture_output=True, text=True, timeout=timeout)
+        out = subprocess.run(argv + fuel + [wasm, command, payload], capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise SystemExit(f"module run did not finish in {timeout:g}s")
     if out.returncode != 0:
@@ -131,9 +146,44 @@ def check_path(where, d):
     """A path the renderer would drop or cut short."""
     if len(d) > MAX_PATH_CHARS:
         return [f"{where}: d is over {MAX_PATH_CHARS} characters, the renderer drops the op"]
-    if path_steps(d) > MAX_PATH_STEPS:
+    steps = path_steps(d)
+    if steps == 0:
+        return [f"{where}: d has no complete step, so the renderer drops the op"]
+    if steps > MAX_PATH_STEPS:
         return [f"{where}: more than {MAX_PATH_STEPS} path steps, the tail is dropped"]
     return []
+
+
+def check_input(where, op):
+    """An input the renderer would drop for having nothing to submit."""
+    return [] if op["submit"] else [f"{where}: submit is empty, so the renderer drops this op entirely"]
+
+
+def image_problems(where, op):
+    """Why the renderer drops this image; empty means it decodes."""
+    encoded = op["b64"]
+    if not encoded:
+        return [f"{where}: b64 is empty, so the renderer drops this op entirely"]
+    if len(encoded) > MAX_IMAGE_CHARS:
+        return [f"{where}: b64 is over {MAX_IMAGE_CHARS} characters, the renderer drops the op"]
+    if not BASE64.fullmatch(encoded):
+        return [f"{where}: b64 is not base64 the client can decode, so the renderer drops the op"]
+    return []
+
+
+def valid_note(note):
+    """Whether the renderer keeps this note: a positive pitch and length, and a start at or after zero."""
+    def number(key, fallback):
+        value = note.get(key) if isinstance(note, dict) else None
+        finite = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+        return value if finite else fallback
+
+    return number("f", 0) > 0 and number("t", -1) >= 0 and number("d", 0) > 0
+
+
+def check_notes(where, op):
+    """Notes the renderer would drop whole because none of them is playable."""
+    return [] if any(valid_note(n) for n in op["notes"]) else [f"{where}: no note has a positive f and d and a t of 0 or more, so the renderer drops this op entirely"]
 
 
 def check_keys(where, kind, op):
@@ -152,6 +202,32 @@ def check_keys(where, kind, op):
     return problems
 
 
+def check_required(where, kind, op):
+    """The key this op cannot be drawn without, which the renderer drops the op for lacking."""
+    need = REQUIRED.get(kind)
+    if need is None:
+        return []
+    if need not in op:
+        return [f"{where}: no {need!r} key, so the renderer drops this op entirely"]
+    expected = REQUIRED_TYPE.get(kind, str)
+    if not isinstance(op[need], expected):
+        return [f"{where}: {need!r} is not a {expected.__name__}, so the renderer drops this op entirely"]
+    return []
+
+
+def check_content(where, kind, op):
+    """What the renderer drops an op for once its required key is there."""
+    if kind == "path":
+        return check_path(where, op["d"])
+    if kind == "input":
+        return check_input(where, op)
+    if kind == "image":
+        return image_problems(where, op)
+    if kind == "notes":
+        return check_notes(where, op)
+    return []
+
+
 def check_op(index, op):
     """Problems with one op; the op itself is not checked further once it is unusable."""
     if not isinstance(op, dict):
@@ -160,13 +236,21 @@ def check_op(index, op):
     where = f"ops[{index}] ({kind})"
     if kind not in OPS:
         return [f"{where}: unknown op, the renderer drops it"]
-    problems = []
-    need = REQUIRED.get(kind)
-    if need and need not in op:
-        problems.append(f"{where}: no {need!r} key, so the renderer drops this op entirely")
-    if kind == "path" and isinstance(op.get("d"), str):
-        problems += check_path(where, op["d"])
+    problems = check_required(where, kind, op)
+    if not problems:
+        problems = check_content(where, kind, op)
     return problems + check_keys(where, kind, op)
+
+
+def check_images(ops):
+    """The first decodable image past the scene's budget, which the renderer drops."""
+    drawn = 0
+    for index, op in enumerate(ops):
+        if isinstance(op, dict) and op.get("op") == "image" and not check_required("", "image", op) and not image_problems("", op):
+            drawn += 1
+            if drawn == MAX_IMAGES + 1:
+                return [f"ops[{index}] (image): more than {MAX_IMAGES} images in one scene, the rest are dropped"]
+    return []
 
 
 def check_sweeps(ops):
@@ -195,7 +279,7 @@ def check_scene(raw):
         return problems + ["ops: not a list, so nothing draws"]
     for index, op in enumerate(ops):
         problems += check_op(index, op)
-    return problems + check_sweeps(ops)
+    return problems + check_images(ops) + check_sweeps(ops)
 
 
 def main(argv):
