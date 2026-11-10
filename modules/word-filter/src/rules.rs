@@ -1,6 +1,6 @@
-//! The admin's word list and patterns, built every run inside the fuel budget: words are a
-//! token lookup with no regex at all, and patterns use regex-lite, which compiles cheaply and
-//! matches in linear time. Every size is capped.
+//! The admin's word list and patterns, built every run inside the fuel budget: words are a token lookup
+//! with no regex at all, and patterns use the regex crate's lazy DFA, which matches in linear time but
+//! spends states on bounded repeats, so every size is capped here and every pattern is weighed in weight.rs.
 
 use regex::bytes::{Regex, RegexBuilder};
 use serde_json::Value;

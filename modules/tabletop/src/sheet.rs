@@ -84,7 +84,7 @@ fn set_hp(sheet: &mut Sheet, arg: &str) -> Result<(), String> {
     if arg.starts_with(['+', '-']) {
         let change: i32 = arg.parse().map_err(|_| bad())?;
         let hp = sheet.hp.ok_or("set your hp first, like /sheet hp 12/20")?;
-        sheet.hp = Some((hp + change).clamp(0, sheet.max_hp.unwrap_or(9999)));
+        sheet.hp = Some(hp.saturating_add(change).clamp(0, sheet.max_hp.unwrap_or(9999)));
         return Ok(());
     }
     if let Some((hp, max)) = arg.split_once('/') {
@@ -199,6 +199,16 @@ mod tests {
         assert!(run(&kv, ALICE, "hp 50").unwrap().contains("HP 20/20"));
         assert!(run(&kv, ALICE, "hp 30/10").unwrap().contains("HP 10/10"));
         assert!(run(&kv, ALICE, "hp lots").unwrap_err().contains("hp is a number"));
+    }
+
+    #[test]
+    fn a_huge_hp_change_saturates_instead_of_wrapping() {
+        let kv = MemKv::default();
+        run(&kv, ALICE, "hp 10/20").unwrap();
+        assert!(run(&kv, ALICE, "hp +2147483647").unwrap().contains("HP 20/20"));
+        assert!(run(&kv, ALICE, "hp -2147483648").unwrap().contains("HP 0/20"));
+        run(&kv, BOB, "hp 5").unwrap();
+        assert!(run(&kv, BOB, "hp +2147483647").unwrap().contains("HP 9999"));
     }
 
     #[test]
