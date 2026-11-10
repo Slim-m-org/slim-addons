@@ -4,11 +4,15 @@
 Run from the repo root: python3 -m unittest discover -s scripts -p 'test_*.py'
 SCRIPTS_DIR points the tests at another copy of the scripts, for mutation checks.
 """
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import pathlib
+import tempfile
 import unittest
+from unittest import mock
 
 here = pathlib.Path(os.environ.get("SCRIPTS_DIR", pathlib.Path(__file__).resolve().parent))
 
@@ -142,6 +146,45 @@ class TypoTest(unittest.TestCase):
     def test_a_misspelt_key_is_a_failure_rather_than_a_check_that_never_ran(self):
         self.assertTrue(problems([{"as": "a1", "do": "go", "expect": {"statuss": "move 1"}}]))
         self.assertTrue(problems([{"as": "a1", "do": "go", "expct": {}}]))
+
+
+class OnlyTest(unittest.TestCase):
+    """--only names one module's script; one that matches nothing is a usage error, not a pass."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for module in ("alpha", "beta"):
+            (pathlib.Path(tmp.name) / "modules" / module).mkdir(parents=True)
+            (pathlib.Path(tmp.name) / "modules" / module / "play.json").write_text("{}")
+        patch = mock.patch.object(play, "root", pathlib.Path(tmp.name))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def run_main(self, *args):
+        played = []
+        err = io.StringIO()
+        with mock.patch.object(play, "play_module", lambda runner, manifest, ops, show: played.append(manifest.parent.name) or []), \
+                mock.patch.object(play, "load_scene_ops", lambda: scene_ops):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                code = play.main(["play-modules.py", "runner", *args])
+        return code, played, err.getvalue()
+
+    def test_a_module_with_no_script_is_refused_and_lists_the_ones_that_exist(self):
+        code, played, err = self.run_main("--only", "alph")
+        self.assertEqual((code, played), (2, []))
+        self.assertIn("no play.json for module 'alph'", err)
+        self.assertIn("alpha, beta", err)
+
+    def test_only_with_no_value_is_a_usage_error(self):
+        for args in (("--only",), ("--only", "--show")):
+            code, played, err = self.run_main(*args)
+            self.assertEqual((code, played), (2, []), args)
+            self.assertIn("Usage:", err)
+
+    def test_only_plays_just_the_named_module_and_none_plays_them_all(self):
+        self.assertEqual(self.run_main("--only", "beta")[:2], (0, ["beta"]))
+        self.assertEqual(self.run_main()[:2], (0, ["alpha", "beta"]))
 
 
 if __name__ == "__main__":

@@ -32,8 +32,9 @@
 //!
 //! `--event <name> <data-json>` runs `@event` the way slim delivers a subscribed
 //! event, as the module's own principal. `--slot <kind> <name> <ids>` runs `@slot`
-//! as the viewer `--caller` names, and checks the answer against the `slot/1`
-//! contract (`slot.rs`).
+//! as the viewer `--caller` names, with `--bot <id>` (repeatable) marking which of
+//! the asked-about members are bot accounts, and checks the answer against the
+//! `slot/1` contract (`slot.rs`).
 //!
 //! `--now-ms <n>` sets the request's `now_ms`, the clock a module otherwise has
 //! no way to read; unset, it is this machine's clock. `--tick <command>` runs a
@@ -156,7 +157,7 @@ fn run_input(options: &Options, manifest: Option<&Value>, now_ms: i64) -> Result
         Mode::Event { name, data } => Ok(("@event".to_owned(), events::input(name, data, now_ms, manifest)?)),
         Mode::Slot(slot) => {
             let viewer = options.caller.as_deref().unwrap_or("viewer");
-            Ok(("@slot".to_owned(), slot::input(slot, viewer, manifest)?))
+            Ok(("@slot".to_owned(), slot::input(slot, viewer, &options.bots, manifest)?))
         }
     }
 }

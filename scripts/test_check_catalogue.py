@@ -7,11 +7,14 @@ SCRIPTS_DIR points the tests at another copy of the scripts, for mutation checks
 import json
 import os
 import pathlib
+import hashlib
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+
+from fixture_repo import Repo
 
 scripts = pathlib.Path(os.environ.get("SCRIPTS_DIR", pathlib.Path(__file__).resolve().parent))
 repo = pathlib.Path(__file__).resolve().parent.parent
@@ -99,6 +102,90 @@ class CatalogueTest(unittest.TestCase):
         done = self.run_check()
         self.assertEqual(done.returncode, 1)
         self.assertIn("hidden characters", done.stderr)
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+class AgainstBaseTest(unittest.TestCase):
+    """--base REF: what a pull request may not do to a module the base commit already published."""
+
+    def setUp(self):
+        self.repo = Repo()
+        self.addCleanup(self.repo.cleanup)
+        self.repo.write("scripts/check-catalogue.py", (scripts / "check-catalogue.py").read_text())
+        self.publish("m", "0.1.0", b"wasm one")
+        self.publish("_template", "0.1.0", b"template wasm")
+        self.write_index(version="0.1.0")
+        self.repo.commit()
+
+    def publish(self, mid, version, wasm, **manifest_extra):
+        path = f"modules/{mid}/{version}/module.wasm"
+        self.repo.write(path, wasm)
+        self.write_manifest(mid, version, wasm, **manifest_extra)
+
+    def write_manifest(self, mid, version, wasm, summary="does a thing", changelog=None):
+        manifest = {
+            "id": mid, "name": mid, "version": version, "summary": summary,
+            "artifact": {"path": f"modules/{mid}/{version}/module.wasm", "sha256": sha256(wasm)},
+            "permissions": [{"key": "use"}],
+            "extension_points": [{"kind": "command", "name": "run", "permission": "use"}],
+        }
+        if changelog is not None:
+            manifest["changelog"] = changelog
+        self.repo.write(f"modules/{mid}/manifest.json", json.dumps(manifest))
+
+    def write_index(self, version, summary="does a thing"):
+        row = {"id": "m", "name": "m", "version": version, "summary": summary}
+        self.repo.write("index.json", json.dumps({"modules": [row]}))
+
+    def check(self, *extra):
+        return subprocess.run([sys.executable, "scripts/check-catalogue.py", *extra], cwd=self.repo.path, capture_output=True, text=True)
+
+    def check_base(self):
+        return self.check("--base", "HEAD")
+
+    def test_nothing_changed_passes(self):
+        done = self.check_base()
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_a_published_wasm_that_changes_is_refused(self):
+        self.publish("m", "0.1.0", b"wasm two")
+        self.assertEqual(self.check().returncode, 0, "the pin follows the new bytes, so only --base can object")
+        done = self.check_base()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("modules/m/0.1.0/module.wasm changed after it was published", done.stderr)
+
+    def test_a_published_wasm_that_is_deleted_is_refused(self):
+        self.repo.remove("modules/m/0.1.0/module.wasm")
+        done = self.check_base()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("modules/m/0.1.0/module.wasm was published and is now gone", done.stderr)
+
+    def test_a_manifest_edit_that_keeps_the_version_is_refused(self):
+        self.write_manifest("m", "0.1.0", b"wasm one", summary="does another thing")
+        self.write_index(version="0.1.0", summary="does another thing")
+        self.assertEqual(self.check().returncode, 0, "the index follows the manifest, so only --base can object")
+        done = self.check_base()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("manifest changed but version 0.1.0 did not", done.stderr)
+
+    def test_editing_only_the_changelog_needs_no_version_bump(self):
+        self.write_manifest("m", "0.1.0", b"wasm one", changelog=[{"version": "0.1.0", "changes": ["first"]}])
+        done = self.check_base()
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_a_new_version_beside_the_published_one_passes(self):
+        self.publish("m", "0.2.0", b"wasm two")
+        self.write_index(version="0.2.0")
+        done = self.check_base()
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_the_template_may_change_freely(self):
+        self.publish("_template", "0.1.0", b"another template wasm", summary="reworded")
+        done = self.check_base()
+        self.assertEqual(done.returncode, 0, done.stderr)
 
 
 if __name__ == "__main__":

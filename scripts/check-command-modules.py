@@ -6,8 +6,10 @@ Usage: python3 scripts/check-command-modules.py <run-module-binary>
 check-app-scenes.py only launches commands an `app` extension point names, so a
 module with only text commands never had its alloc/run packing executed by CI.
 Each command here must answer ok:true with the expected output; a command with
-no entry in SAMPLES fails, so a new module has to add one.
+no entry in SAMPLES fails, so a new module has to add one. Runs are held to the
+manifest's fuel and wall limits, as production holds them.
 """
+import importlib.util
 import json
 import pathlib
 import subprocess
@@ -15,12 +17,10 @@ import sys
 import tempfile
 
 root = pathlib.Path(__file__).resolve().parent.parent
-runner = sys.argv[1]
-
-# (module, command) -> (input, what the output must start with)
 # One reminder, set before the commands that need one to exist.
 BREAD = "30m take the bread out"
 
+# (module, command) -> (input, what the output must start with; "" means the output must be empty)
 SAMPLES = {
     ("calc", "eval"): ("2 * (3 + 4)", "2 * (3 + 4) = 14"),
     ("code-exec", "run"): ("1 + 1", "2"),
@@ -42,7 +42,6 @@ SAMPLES = {
     ("tabletop", "sheet"): ("help", "Sheet commands:"),
     ("table", "format"): ("a,b\n1,2", "a | b\n--+--\n1 | 2"),
     ("tags", "add"): ("rules Be kind", ""),
-    # message.post is simulated now, so the text is posted and the output is empty.
     ("tags", "tag"): ("rules", ""),
     ("tags", "edit"): ("rules Be nice", ""),
     ("tags", "remove"): ("rules", ""),
@@ -63,6 +62,14 @@ SETUP = {
     ("reminder", "due"): [("remind", BREAD)],
 }
 
+# What a command posts through message.post, which the runner prints to stderr and a command's output does not carry.
+POSTS = {
+    ("tags", "add"): "Added tag rules.",
+    ("tags", "tag"): "Be kind",
+    ("tags", "edit"): "Updated tag rules.",
+    ("tags", "remove"): "Removed tag rules.",
+}
+
 # The clock every run of a module with a time-dependent command is given.
 NOW_MS = 1_700_000_000_000
 # Per command, how much later than NOW_MS it runs.
@@ -71,40 +78,87 @@ LATER_MS = {("reminder", "due"): 31 * 60_000}
 FETCH_FILES = {"weather": root / "scripts" / "fixtures" / "weather-fetch.json"}
 LOG_FILES = {"xp": root / "scripts" / "fixtures" / "xp-log.json"}
 
-problems = []
-for manifest in sorted((root / "modules").glob("*/manifest.json")):
-    if manifest.parent.name == "_template":
-        continue
-    m = json.loads(manifest.read_text())
-    apps = {e["command"] for e in m["extension_points"] if e["kind"] == "app"}
-    for command in sorted({e["name"] for e in m["extension_points"] if e["kind"] == "command"} - apps):
-        key = (m["id"], command)
-        if key not in SAMPLES:
-            problems.append(f"{m['id']} {command}: no sample input in SAMPLES")
-            continue
-        text, expected = SAMPLES[key]
-        wasm = root / m["artifact"]["path"]
-        with tempfile.TemporaryDirectory() as scratch:
-            kv = ["--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", "--now-ms", str(NOW_MS)]
-            if m["id"] in LOG_FILES:
-                kv += ["--log-file", str(LOG_FILES[m["id"]])]
-            if m["id"] in FETCH_FILES:
-                kv += ["--fetch-file", str(FETCH_FILES[m["id"]])]
-            for step, step_input in SETUP.get(key, []):
-                subprocess.run([runner, *kv, str(wasm), step, step_input], capture_output=True, text=True)
-            kv[kv.index("--now-ms") + 1] = str(NOW_MS + LATER_MS.get(key, 0))
-            done = subprocess.run([runner, *kv, str(wasm), command, text], capture_output=True, text=True)
-        try:
-            reply = json.loads(done.stdout)
-        except json.JSONDecodeError:
-            problems.append(f"{m['id']} {command}: no JSON reply ({done.stderr.strip()[:200]})")
-            continue
-        output = reply.get("output", "")
-        if done.returncode != 0 or reply.get("ok") is not True or not output.startswith(expected):
-            problems.append(f"{m['id']} {command}: expected output starting {expected!r}, got {reply!r}")
-        else:
-            print(f"{m['id']} {command}: ok")
 
-for p in problems:
-    print(p, file=sys.stderr)
-sys.exit(1 if problems else 0)
+def load_scene_ops():
+    spec = importlib.util.spec_from_file_location("check_scene_ops", root / "scripts" / "check-scene-ops.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_flags(mid, scratch, now_ms):
+    flags = ["--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", "--now-ms", str(now_ms)]
+    if mid in LOG_FILES:
+        flags += ["--log-file", str(LOG_FILES[mid])]
+    if mid in FETCH_FILES:
+        flags += ["--fetch-file", str(FETCH_FILES[mid])]
+    return flags
+
+
+def run_once(runner, args, timeout):
+    """One run as (reply, posts, problem): reply is None when the runner gave no answer, problem says why the run is unusable."""
+    try:
+        done = subprocess.run([runner, *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, [], f"the run did not finish in {timeout:g}s"
+    try:
+        reply = json.loads(done.stdout)
+    except json.JSONDecodeError:
+        return None, [], f"no JSON reply ({done.stderr.strip()[:200]})"
+    posts = [line.split(": ", 1)[1] for line in done.stderr.splitlines() if line.startswith("message.post #")]
+    if done.returncode != 0 or reply.get("ok") is not True:
+        return reply, posts, f"the run failed: {reply!r} {done.stderr.strip()[:200]}"
+    return reply, posts, None
+
+
+def output_matches(output, expected):
+    # An empty expectation would match anything as a prefix, so it means the output is empty.
+    return output.startswith(expected) if expected else output == ""
+
+
+def check_sample(runner, m, command, wasm, budget):
+    """Every problem with one command run on its sample input, after the commands it needs have run."""
+    key = (m["id"], command)
+    text, expected = SAMPLES[key]
+    fuel, timeout = budget
+    with tempfile.TemporaryDirectory() as scratch:
+        for step, step_input in SETUP.get(key, []):
+            _, _, problem = run_once(runner, [*fuel, *run_flags(m["id"], scratch, NOW_MS), wasm, step, step_input], timeout)
+            if problem:
+                return [f"setup {step!r}: {problem}"]
+        now_ms = NOW_MS + LATER_MS.get(key, 0)
+        reply, posts, problem = run_once(runner, [*fuel, *run_flags(m["id"], scratch, now_ms), wasm, command, text], timeout)
+    if problem:
+        return [problem]
+    problems = []
+    if not output_matches(reply.get("output", ""), expected):
+        problems.append(f"expected output starting {expected!r}, got {reply!r}")
+    if key in POSTS and POSTS[key] not in posts:
+        problems.append(f"expected a message.post of {POSTS[key]!r}, got {posts!r}")
+    return problems
+
+
+def main(runner):
+    scene_ops = load_scene_ops()
+    problems = []
+    for manifest in sorted((root / "modules").glob("*/manifest.json")):
+        if manifest.parent.name == "_template":
+            continue
+        m = json.loads(manifest.read_text())
+        apps = {e["command"] for e in m["extension_points"] if e["kind"] == "app"}
+        wasm = str(root / m["artifact"]["path"])
+        for command in sorted({e["name"] for e in m["extension_points"] if e["kind"] == "command"} - apps):
+            if (m["id"], command) not in SAMPLES:
+                problems.append(f"{m['id']} {command}: no sample input in SAMPLES")
+                continue
+            found = check_sample(runner, m, command, wasm, scene_ops.run_budget(wasm))
+            problems += [f"{m['id']} {command}: {p}" for p in found]
+            if not found:
+                print(f"{m['id']} {command}: ok")
+    for p in problems:
+        print(p, file=sys.stderr)
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1]))

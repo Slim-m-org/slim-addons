@@ -10,8 +10,8 @@ const MAX_TEXT: usize = 120;
 const MAX_BADGE: usize = 24;
 const TONES: [&str; 3] = ["normal", "muted", "accent"];
 
-/// The `input` of an `@slot` run, for a slot the manifest declares.
-pub fn input(slot: &[String; 3], viewer: &str, manifest: Option<&Value>) -> Result<String, String> {
+/// The `input` of an `@slot` run, for a slot the manifest declares; `bots` are the asked-about ids that are bot accounts.
+pub fn input(slot: &[String; 3], viewer: &str, bots: &[String], manifest: Option<&Value>) -> Result<String, String> {
     let [kind, name, ids] = slot;
     if let Some(manifest) = manifest {
         let declared = manifest["slots"].as_array().is_some_and(|s| s.iter().any(|s| s["kind"] == kind.as_str() && s["name"] == name.as_str()));
@@ -23,7 +23,10 @@ pub fn input(slot: &[String; 3], viewer: &str, manifest: Option<&Value>) -> Resu
     if ids.is_empty() || ids.len() > MAX_USERS {
         return Err(format!("--slot needs 1 to {MAX_USERS} comma-separated user ids"));
     }
-    Ok(json!({"slot": kind, "name": name, "user_ids": ids, "viewer_id": viewer}).to_string())
+    if let Some(stray) = bots.iter().find(|bot| !ids.contains(&bot.as_str())) {
+        return Err(format!("--bot {stray} is not one of the --slot user ids"));
+    }
+    Ok(json!({"slot": kind, "name": name, "user_ids": ids, "bot_ids": bots, "viewer_id": viewer}).to_string())
 }
 
 pub fn user_ids(list: &str) -> Vec<&str> {
@@ -119,7 +122,17 @@ mod tests {
     #[test]
     fn an_undeclared_slot_is_refused() {
         let manifest = json!({"slots": [{"kind": "member.badge", "name": "level"}]});
-        let ask = |name: &str| input(&["member.badge".into(), name.into(), "u".into()], "v", Some(&manifest));
+        let ask = |name: &str| input(&["member.badge".into(), name.into(), "u".into()], "v", &[], Some(&manifest));
         assert!(ask("level").is_ok() && ask("rank").is_err());
+    }
+
+    #[test]
+    fn the_input_names_which_of_the_asked_members_are_bots() {
+        let ask = |bots: &[String]| input(&["member.badge".into(), "level".into(), "ada, bot".into()], "v", bots, None);
+        let none: Value = serde_json::from_str(&ask(&[]).unwrap()).unwrap();
+        assert_eq!(none["bot_ids"], json!([]));
+        let one: Value = serde_json::from_str(&ask(&["bot".to_owned()]).unwrap()).unwrap();
+        assert_eq!((one["user_ids"].clone(), one["bot_ids"].clone()), (json!(["ada", "bot"]), json!(["bot"])));
+        assert!(ask(&["zed".to_owned()]).unwrap_err().contains("--bot zed"));
     }
 }

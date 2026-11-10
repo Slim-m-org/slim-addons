@@ -52,6 +52,7 @@ $R --caller alice modules/tic-tac-toe/0.2.0/module.wasm play ''
 ```
 
 A module that uses `kv.store` can run here too: the runner answers `slim.host_call` with an in-memory store that enforces slim's bounds, and `--kv-file <path>` keeps it between runs.
+A `slim.host_call` request over 128 KiB gets no answer at all, as it does in slim, whichever capability it names.
 
 A module that uses `net.fetch` runs here against canned responses, so an author can iterate before pushing anything.
 `--fetch-file <path>` is a JSON object keyed by full URL:
@@ -98,6 +99,7 @@ Every run carries `settings`: the manifest's defaults, with `--setting key=value
 `--event <name> '<data json>'` runs `@event` the way slim delivers a subscribed event, as the module's own principal; it refuses an event the manifest does not subscribe to, and one missing a `data` field.
 It knows every event up to add-on API 5, and slim-m's `docs/modules/event-fixtures/*.json` hold a ready `data` for each API 5 one.
 `--slot <kind> <name> <user,ids>` runs `@slot` as the viewer `--caller` names, and fails the run when the answer breaks the `slot/1` contract (an unknown node type, no `fallback`, an answer for a member nobody asked about).
+`--bot <id>` (repeatable, `--slot` only) marks which of those members are bot accounts, which is what the input's `bot_ids` carries.
 
 ```bash
 $R --data-file /tmp/d --log-file sessions.json --tick catchup modules/xp/0.1.0/module.wasm
@@ -112,7 +114,9 @@ Install on a dev deployment for those (`scripts/e2e-xp.py` plays signed webhooks
 
 If your module draws, `scripts/check-scene-ops.py` reads its output the way the
 client's parser does and reports anything that would be silently dropped - an op
-that does not exist, a key on the wrong op, a colour that is not a scene colour.
+that does not exist, a key on the wrong op, a colour that is not a scene colour,
+an input with nothing to submit, a path with no complete step, an image the
+client cannot decode or a ninth one in the same scene.
 Pass it the runner, the wasm, the command, and as many inputs as you want
 covered:
 
@@ -142,7 +146,7 @@ The scripts assert behaviour, not wording, where the wording is not the point: t
 ## Checks
 
 CI (`.github/workflows/ci.yml`) runs on every pull request and push to main.
-It runs `cargo test` for each module, `scripts/check-wasm-builds.py`, then `scripts/check-catalogue.py`, then `scripts/check-app-scenes.py`, which launches every app and checks the frame for each control, tap target and input its scene offers, as two different callers, then `scripts/check-command-modules.py`, which runs each command-only module through the wasm abi with a fixed input, then `scripts/play-modules.py`, which plays each game through its script.
+It runs `cargo test` for each module, `scripts/check-wasm-builds.py`, then `scripts/check-catalogue.py`, then `scripts/check-app-scenes.py`, which launches every app and checks the frame for each control, tap target and input its scene offers, as two different callers, then `scripts/check-command-modules.py`, which runs each command-only module through the wasm abi with a fixed input, held to its manifest's fuel and wall limits and checking what it posts, then `scripts/play-modules.py`, which plays each game through its script.
 Right after the `cargo test` loop, `python3 -m unittest discover -s scripts -p 'test_*.py'` runs the unit tests for these scripts and `cargo test` in `tools/run-module` runs the runner's own; `scripts/check-module-tests.py` fails a module whose `src` has no `#[test]`.
 
 Each module keeps its logic in plain Rust with unit tests, so `cd modules/<id> && cargo test` runs them with no wasm involved.
@@ -156,6 +160,7 @@ When you ship a new version, add its entry at the top.
 `python3 scripts/check-wasm-builds.py` rebuilds each module's wasm with [`scripts/build-wasm.sh`](scripts/build-wasm.sh) and fails if it differs from the one the manifest pins, so a source change cannot ship without a rebuilt wasm and a new version.
 The build uses the toolchain pinned in `rust-toolchain.toml` and remaps every absolute path (cargo home, toolchain, checkout) to a fixed one, so the same source gives the same bytes on any machine.
 `scripts/package-module.sh` uses the same recipe.
+Every module commits its `Cargo.lock`: the build and CI's `cargo test` pass `--locked`, and this check fails a module that has none.
 Rustup reads the pin automatically; a machine without that exact toolchain installed needs `rustup toolchain install 1.94.1` first.
 
 Wasm files published before that recipe cannot match a rebuild.

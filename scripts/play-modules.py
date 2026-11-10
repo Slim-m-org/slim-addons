@@ -221,21 +221,37 @@ def play_module(runner, manifest_path, scene_ops, show):
     return results
 
 
-def main(argv):
-    args = argv[1:]
-    show = "--show" in args
-    only = args[args.index("--only") + 1] if "--only" in args else None
+def parse_args(args):
+    """(runner, only, show) from the command line, or None when it is not one this script understands."""
+    only = None
+    if "--only" in args:
+        at = args.index("--only")
+        only = args[at + 1] if at + 1 < len(args) else None
+        if not only or only.startswith("--"):
+            return None
     positional = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or args[i - 1] != "--only")]
     if len(positional) != 1:
-        print(__doc__.split("\n\n")[0], file=sys.stderr)
+        return None
+    return positional[0], only, "--show" in args
+
+
+def main(argv):
+    parsed = parse_args(argv[1:])
+    if parsed is None:
+        print(next(part for part in __doc__.split("\n\n") if part.startswith("Usage:")), file=sys.stderr)
+        return 2
+    runner, only, show = parsed
+    plays = sorted((root / "modules").glob("*/play.json"))
+    if only and only not in {play.parent.name for play in plays}:
+        print(f"no play.json for module {only!r}; scripts exist for: {', '.join(play.parent.name for play in plays)}", file=sys.stderr)
         return 2
     scene_ops = load_scene_ops()
     failed = False
-    for play in sorted((root / "modules").glob("*/play.json")):
+    for play in plays:
         if only and play.parent.name != only:
             continue
         print(play.parent.name)
-        for name, problems in play_module(positional[0], play.parent / "manifest.json", scene_ops, show):
+        for name, problems in play_module(runner, play.parent / "manifest.json", scene_ops, show):
             print(f"  {'FAILED' if problems else 'ok'}  {name}")
             for label, problem in problems:
                 print(f"      {label}: {problem}")

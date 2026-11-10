@@ -29,12 +29,11 @@ jobs:
           set -euo pipefail
           for dir in modules/*/; do
             [ -f "$dir/Cargo.toml" ] || continue
-            locked=""
-            [ -f "$dir/Cargo.lock" ] && locked="--locked"
+            [ -f "$dir/Cargo.lock" ] || { echo "::error::$dir has no Cargo.lock; commit one so the build is reproducible"; exit 1; }
             echo "::group::$dir"
             (
               cd "$dir"
-              cargo test $locked
+              cargo test --locked
             )
             echo "::endgroup::"
           done
