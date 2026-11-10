@@ -155,6 +155,13 @@ impl<'a, H: Host> Store<'a, H> {
         Ok(reply["changed"].as_i64() == Some(1))
     }
 
+    /// Gives back a reminder [`Store::claim_reminder`] took but never sent, so the next run sends it.
+    pub fn release_reminder(&self, id: &str) -> Result<(), String> {
+        self.data(json!({"op": "update", "table": "nights", "values": {"reminded": false}, "where": [
+            {"col": "night_id", "op": "eq", "val": id}, {"col": "reminded", "op": "eq", "val": true}]}))
+        .map(|_| ())
+    }
+
     /// Forgets nights created before `before_ms` along with their votes, a few at a time.
     pub fn prune(&self, before_ms: i64, limit: i64) -> Result<i64, String> {
         let old = self.data(json!({"op": "query", "table": "nights", "limit": limit, "where": [{"col": "created", "op": "lt", "val": before_ms}]}))?;

@@ -154,7 +154,7 @@
     {
       "id": "game-night",
       "name": "Game night",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Ping a group, vote on the time that works, say in, maybe or out, and get a reminder before the start."
     },
     {
