@@ -64,16 +64,18 @@ fn cancel<H: Host>(host: &H, input: &str) -> Result<String, String> {
         .checked_sub(1)
         .and_then(|n| pending.get(n))
         .ok_or_else(|| format!("There is no reminder {number}. /reminders lists them."))?;
-    store::remove(host, &chosen.id).map_err(kv)?;
+    store::remove(host, std::slice::from_ref(&chosen.id)).map_err(kv)?;
     Ok(format!("Cancelled: {}", chosen.text))
 }
 
 /// The timer: posts what has come due, then forgets it. A reminder is deleted
 /// only after its post went out, so a refused post is tried again next tick.
+/// It also drops index entries whose reminder is gone, which nothing else could list or cancel.
 fn due<H: Host>(host: &H, now_ms: i64) -> Result<String, String> {
     need_clock(now_ms)?;
+    let store::Pending { live, dead } = store::pending(host).map_err(kv)?;
     let mut ready = Vec::new();
-    for reminder in store::all(host).map_err(kv)? {
+    for reminder in live {
         if reminder.due_ms > now_ms {
             break;
         }
@@ -83,13 +85,13 @@ fn due<H: Host>(host: &H, now_ms: i64) -> Result<String, String> {
         }
     }
     if ready.is_empty() {
+        store::remove(host, &dead).map_err(kv)?;
         return Ok(String::new());
     }
     let lines: Vec<String> = ready.iter().map(|r| format!("Reminder: {}", r.text)).collect();
     host.post(&lines.join("\n")).map_err(post_failure)?;
-    for reminder in &ready {
-        store::remove(host, &reminder.id).map_err(kv)?;
-    }
+    let gone: Vec<String> = ready.iter().map(|r| r.id.clone()).chain(dead).collect();
+    store::remove(host, &gone).map_err(kv)?;
     Ok(format!("Posted {} reminder{}.", ready.len(), if ready.len() == 1 { "" } else { "s" }))
 }
 
@@ -160,6 +162,67 @@ mod tests {
         let refused = run_at(&host, "remind", "1h one more", NOW).unwrap_err();
         assert!(refused.contains("20 reminders"), "{refused}");
         assert!(host.total_bytes() < 64 * 1024);
+    }
+
+    /// What a /remind racing the timer leaves behind: the index names an id whose text is gone.
+    fn leave_dead_ids(host: &FakeHost, count: usize) {
+        let mut map = host.map.borrow_mut();
+        let index = map.entry("i".to_string()).or_default();
+        for n in 0..count {
+            index.push_str(&format!("\n{:013}-dead{n:02}", 1 + n));
+        }
+    }
+
+    fn index_of(host: &FakeHost) -> String {
+        host.map.borrow().get("i").cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn an_id_whose_text_is_gone_does_not_use_up_a_slot() {
+        let host = FakeHost::default();
+        for n in 0..MAX_PENDING - 1 {
+            run_at(&host, "remind", "1h x", NOW + n as i64).unwrap();
+        }
+        leave_dead_ids(&host, 1);
+        assert_eq!(run_at(&host, "list", "", NOW).unwrap().lines().count(), MAX_PENDING - 1);
+
+        assert!(run_at(&host, "remind", "1h last one", NOW + 1_000).is_ok(), "the dead id held a slot the person cannot see or cancel");
+        assert!(!index_of(&host).contains("dead"), "the dead id stayed in the index");
+        assert!(run_at(&host, "remind", "1h one more", NOW).unwrap_err().contains("20 reminders"));
+    }
+
+    #[test]
+    fn the_timer_clears_ids_whose_text_is_gone_even_when_nothing_is_due() {
+        let host = FakeHost::default();
+        run_at(&host, "remind", "1h a", NOW).unwrap();
+        leave_dead_ids(&host, 2);
+        assert_eq!(run_at(&host, "due", "", NOW).unwrap(), "");
+        assert!(!index_of(&host).contains("dead"), "{}", index_of(&host));
+        assert_eq!(run_at(&host, "list", "", NOW).unwrap(), "1. in 1 hour: a");
+    }
+
+    #[test]
+    fn the_timer_clears_dead_ids_along_with_what_it_posts() {
+        let host = FakeHost::default();
+        run_at(&host, "remind", "5m a", NOW).unwrap();
+        leave_dead_ids(&host, 1);
+        assert_eq!(run_at(&host, "due", "", NOW + 10 * 60_000).unwrap(), "Posted 1 reminder.");
+        assert_eq!(index_of(&host), "");
+        assert_eq!(host.map.borrow().len(), 1, "only the index is left: {:?}", host.map.borrow().keys().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_full_space_all_due_goes_out_in_two_ticks_inside_the_call_budget() {
+        let host = FakeHost::default();
+        for n in 0..MAX_PENDING {
+            run_at(&host, "remind", "1m x", NOW + n as i64).unwrap();
+        }
+        leave_dead_ids(&host, 3);
+        let later = NOW + 60 * 60_000;
+        assert_eq!(run_at(&host, "due", "", later).unwrap(), "Posted 10 reminders.");
+        assert_eq!(run_at(&host, "due", "", later).unwrap(), "Posted 10 reminders.");
+        assert_eq!(run_at(&host, "list", "", later).unwrap(), "No reminders waiting.");
+        assert_eq!(index_of(&host), "");
     }
 
     #[test]

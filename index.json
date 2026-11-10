@@ -4,7 +4,7 @@
     {
       "id": "code-exec",
       "name": "Code Blocks",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "summary": "Run a code block in your space and see its output inline, like a notebook cell."
     },
     {
@@ -118,7 +118,7 @@
     {
       "id": "tabletop",
       "name": "Tabletop Kit",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Dice with advantage, an initiative tracker and short character sheets for tabletop games."
     },
     {
@@ -136,7 +136,7 @@
     {
       "id": "reminder",
       "name": "Reminder",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time."
     },
     {
@@ -154,7 +154,7 @@
     {
       "id": "game-night",
       "name": "Game night",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Ping a group, vote on the time that works, say in, maybe or out, and get a reminder before the start."
     },
     {

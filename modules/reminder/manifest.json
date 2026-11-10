@@ -2,9 +2,23 @@
   "schema": 1,
   "id": "reminder",
   "name": "Reminder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time.",
   "description": "/remind 30m take the bread out sets a reminder for 30 minutes from now (m for minutes, h for hours, d for days, from one minute to 30 days). /reminders lists what is waiting and /unremind 2 cancels one by its number. When one comes due, Reminder posts it in the channel an admin picked, as Reminder, within about five minutes. Up to 20 reminders can wait in a space, each up to 200 characters, shared by everyone. It uses kv.store to remember them, schedule to check every five minutes for what is due, and message.post to say it in the channel: an admin approves each when installing, and picks the channel the reminders go to. It reads the host's clock (now_ms), so it needs a slim that provides one.",
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "A reminder no longer stays hidden in a slot the 20-reminder limit still counted."
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: set, list and cancel reminders, posted to a channel when they come due."
+      ]
+    }
+  ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {
@@ -17,8 +31,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/reminder/0.1.0/module.wasm",
-    "sha256": "830bfa5044b7f5d30737335789bfc1ed75f19c431bf4aa0b17688313bdf46c6a"
+    "path": "modules/reminder/0.1.1/module.wasm",
+    "sha256": "95021c76efaeb9d57bdf88e55f2f10c60f3f715597df3ae9470b8859e2b9a7cc"
   },
   "permissions": [
     {
