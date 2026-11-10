@@ -5,6 +5,8 @@
 //! and imports nothing. The module never traps on user JS errors; it always
 //! answers with `{"ok":true,"output":...}` or `{"ok":false,"error":...}`.
 
+mod output;
+mod rejections;
 mod rng;
 mod runtime;
 

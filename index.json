@@ -4,7 +4,7 @@
     {
       "id": "code-exec",
       "name": "Code Blocks",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "summary": "Run a code block in your space and see its output inline, like a notebook cell."
     },
     {

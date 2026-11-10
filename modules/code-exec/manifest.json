@@ -2,10 +2,18 @@
   "schema": 1,
   "id": "code-exec",
   "name": "Code Blocks",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "summary": "Run a code block in your space and see its output inline, like a notebook cell.",
-  "description": "Adds an Execute permission and a run command. A member who holds the permission can run a code block; the module executes it in slim-m's sandbox and posts the output. JavaScript first. Runs are deterministic: Math.random starts from the same seed on every run and Date.now() is frozen at 0, so do not rely on either to vary between runs.",
+  "description": "Adds an Execute permission and a run command. A member who holds the permission can run a code block; the module executes it in slim-m's sandbox and posts the output. JavaScript first. Runs are deterministic: Math.random starts from the same seed on every run and Date.now() is frozen at 0, so do not rely on either to vary between runs. Output past 64 KiB is cut off with a notice.",
   "changelog": [
+    {
+      "version": "0.1.4",
+      "changes": [
+        "An async function that throws, or a promise that is rejected and never caught, now shows its error instead of [object Promise].",
+        "A promise shows the value it finished with instead of [object Promise].",
+        "Output past 64 KiB is cut with a notice instead of failing the whole run."
+      ]
+    },
     {
       "version": "0.1.3",
       "changes": [
@@ -45,8 +53,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/code-exec/0.1.3/module.wasm",
-    "sha256": "4b3e23e5b9095707255209e5b9ddde0d2fc1e912f8aa638e53d19b8763ae6fe9"
+    "path": "modules/code-exec/0.1.4/module.wasm",
+    "sha256": "04d26c1f828015266bc7e4dcc75a5ba75bfb07fc88cd92a2b9da37b1fedb13fb"
   },
   "permissions": [
     {
