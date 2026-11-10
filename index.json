@@ -152,6 +152,12 @@
       "summary": "Members earn XP for time in voice calls and show a level bar on their profile."
     },
     {
+      "id": "transcript",
+      "name": "Call transcript",
+      "version": "0.1.0",
+      "summary": "Writes down a voice call, with everyone's agreement, and posts the transcript when it ends."
+    },
+    {
       "id": "game-night",
       "name": "Game night",
       "version": "0.1.1",

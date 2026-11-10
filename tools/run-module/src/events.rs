@@ -5,7 +5,7 @@
 use serde_json::{json, Value};
 
 /// (event, the `data` fields it carries, the field that is its occurrence time).
-const EVENTS: [(&str, &[&str], Option<&str>); 12] = [
+const EVENTS: [(&str, &[&str], Option<&str>); 16] = [
     ("message.created", &["message_id", "channel_id", "author_id", "content", "created_at_ms", "is_bot"], Some("created_at_ms")),
     ("message.edited", &["message_id", "channel_id", "author_id", "content", "edited_at_ms", "is_bot"], Some("edited_at_ms")),
     ("message.deleted", &["message_id", "channel_id"], None),
@@ -18,6 +18,10 @@ const EVENTS: [(&str, &[&str], Option<&str>); 12] = [
     ("voice.screen_share.changed", &["channel_id", "user_id", "sharing"], None),
     ("voice.session.closed", &["session_id", "user_id", "channel_id", "joined_at_ms", "left_at_ms", "alone_ms"], Some("left_at_ms")),
     ("poll.voted", &["message_id", "channel_id", "options", "ranked", "winner"], None),
+    ("call.audio.started", &["session_id", "channel_id", "started_at_ms", "included"], Some("started_at_ms")),
+    ("call.audio.participant", &["session_id", "channel_id", "user_id", "included"], None),
+    ("call.audio.segment", &["session_id", "channel_id", "segment_id", "user_id", "start_ms", "end_ms", "text", "language"], None),
+    ("call.audio.stopped", &["session_id", "channel_id", "stopped_at_ms", "reason", "segments_sent"], Some("stopped_at_ms")),
 ];
 
 /// The `input` of an `@event` run, or why slim would never have sent it.
@@ -26,9 +30,16 @@ pub fn input(name: &str, data: &str, now_ms: i64, manifest: Option<&Value>) -> R
         return Err(format!("unknown event {name}; slim sends {}", EVENTS.map(|e| e.0).join(", ")));
     };
     if let Some(manifest) = manifest {
-        let subscribed = manifest["subscriptions"].as_array().is_some_and(|s| s.iter().any(|s| s["event"] == name));
-        if !subscribed {
-            return Err(format!("the manifest does not subscribe to {name}, so slim would never send it"));
+        if name.starts_with("call.audio.") {
+            let approved = manifest["capabilities"].as_array().is_some_and(|c| c.iter().any(|c| c == "call.audio"));
+            if !approved {
+                return Err(format!("the manifest does not declare call.audio, so slim would never send {name}"));
+            }
+        } else {
+            let subscribed = manifest["subscriptions"].as_array().is_some_and(|s| s.iter().any(|s| s["event"] == name));
+            if !subscribed {
+                return Err(format!("the manifest does not subscribe to {name}, so slim would never send it"));
+            }
         }
     }
     let data: Value = serde_json::from_str(data).map_err(|e| format!("--event data is not JSON: {e}"))?;
@@ -55,6 +66,9 @@ fn delivery_id(name: &str, data: &Value, at_ms: i64) -> String {
         "voice.participant.left" => format!("voice-leave:{}:{at_ms}", text("user_id")),
         "voice.screen_share.changed" => format!("voice-share:{}:{at_ms}", text("user_id")),
         "poll.voted" => format!("poll-vote:{}:{at_ms}", text("message_id")),
+        // slim ends these ids with a per-session counter the data does not carry; a segment's own id and the clock stand in.
+        "call.audio.segment" => text("segment_id"),
+        "call.audio.started" | "call.audio.participant" | "call.audio.stopped" => format!("call-audio:{}:{at_ms}", text("session_id")),
         _ => format!("voice-session:{}", text("session_id")),
     }
 }
@@ -102,6 +116,25 @@ mod tests {
             let got: Value = serde_json::from_str(&input(name, &want["data"].to_string(), at, None).unwrap()).unwrap();
             assert_eq!(got, want, "{name}");
         }
+    }
+
+    #[test]
+    fn call_audio_events_need_the_capability_and_no_subscription() {
+        let data = r#"{"session_id":"s1","channel_id":"c1","segment_id":"call-audio:s1:7","user_id":"u","start_ms":1,"end_ms":2,"text":"hi","language":"en"}"#;
+        let with = json!({"capabilities": ["call.audio"]});
+        let sent: Value = serde_json::from_str(&input("call.audio.segment", data, 9, Some(&with)).unwrap()).unwrap();
+        assert_eq!((sent["id"].as_str(), sent["data"]["text"].as_str()), (Some("call-audio:s1:7"), Some("hi")));
+        assert!(input("call.audio.segment", data, 9, Some(&json!({"capabilities": ["events"]}))).unwrap_err().contains("does not declare call.audio"));
+        assert!(input("call.audio.segment", r#"{"session_id":"s1"}"#, 9, None).unwrap_err().contains("no channel_id"));
+    }
+
+    #[test]
+    fn a_call_started_and_stopped_are_timed_by_their_own_clocks() {
+        let started = r#"{"session_id":"s1","channel_id":"c1","started_at_ms":500,"included":["u"]}"#;
+        let sent: Value = serde_json::from_str(&input("call.audio.started", started, 9, None).unwrap()).unwrap();
+        assert_eq!((sent["at_ms"].as_i64(), sent["id"].as_str()), (Some(500), Some("call-audio:s1:500")));
+        let stopped = r#"{"session_id":"s1","channel_id":"c1","stopped_at_ms":900,"reason":"stopped","segments_sent":3}"#;
+        assert_eq!(serde_json::from_str::<Value>(&input("call.audio.stopped", stopped, 9, None).unwrap()).unwrap()["at_ms"], 900);
     }
 
     #[test]

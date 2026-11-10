@@ -97,7 +97,7 @@ The cursor is the position in that list, as slim's is a close-order cursor and n
 
 Every run carries `settings`: the manifest's defaults, with `--setting key=value` (repeatable) laid over them and checked against the declared type and range.
 `--event <name> '<data json>'` runs `@event` the way slim delivers a subscribed event, as the module's own principal; it refuses an event the manifest does not subscribe to, and one missing a `data` field.
-It knows every event up to add-on API 5, and slim-m's `docs/modules/event-fixtures/*.json` hold a ready `data` for each API 5 one.
+It knows every event up to add-on API 5, and the four `call.audio.*` events of add-on API 4, which need the `call.audio` capability in the manifest and no subscription (their delivery ids are stand-ins, as for an edit). slim-m's `docs/modules/event-fixtures/*.json` hold a ready `data` for each API 5 one.
 `--slot <kind> <name> <user,ids>` runs `@slot` as the viewer `--caller` names, and fails the run when the answer breaks the `slot/1` contract (an unknown node type, no `fallback`, an answer for a member nobody asked about).
 `--bot <id>` (repeatable, `--slot` only) marks which of those members are bot accounts, which is what the input's `bot_ids` carries.
 
