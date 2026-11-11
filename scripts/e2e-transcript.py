@@ -146,7 +146,7 @@ def run(binary, keep):
         checks.expect("the command answers ok", reply.get("ok"), True)
         so_far = xp.wait_for("the so-far message", lambda: posted(server, token, chat, "**Call transcript so far**"))
         print("---\n" + so_far[0]["content"] + "\n---")
-        checks.expect("so far holds alice's merged paragraph", "Speaker 1: Okay, so the plan for Friday is the release. Anyone blocked on review?" in so_far[0]["content"], True)
+        checks.expect("so far holds alice's merged paragraph", "Alice: Okay, so the plan for Friday is the release. Anyone blocked on review?" in so_far[0]["content"], True)
 
         print("alice stops the call")
         xp.ok(server, "DELETE", f"/channels/{room}/voice/call-audio", token=alice[1])
@@ -154,7 +154,7 @@ def run(binary, keep):
         text = final[0]["content"]
         print("---\n" + text + "\n---")
         checks.expect("it is posted once", len(final), 1)
-        checks.expect("it holds both speakers, numbered", "Speaker 1:" in text and "Speaker 2: No, I merged mine this morning." in text, True)
+        checks.expect("it holds both speakers by name", "Alice:" in text and "Bob: No, I merged mine this morning." in text, True)
         checks.expect("the person outside the agreed set is not in it", "never agreed" in text, False)
         checks.expect("it ends the transcript", text.rstrip().endswith("_End of transcript._"), True)
         time.sleep(7)
