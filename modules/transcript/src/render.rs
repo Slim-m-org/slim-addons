@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::store::{Call, Line};
+use crate::store::{Call, Line, Person};
 
 /// What a posted message may hold; the host refuses more.
 pub const MESSAGE_CHARS: usize = 4000;
@@ -19,7 +19,7 @@ pub struct Layout<'a> {
     pub started_ms: i64,
     pub merge_gap_ms: i64,
     pub timestamps: bool,
-    pub speakers: &'a HashMap<String, i64>,
+    pub speakers: &'a HashMap<String, Person>,
 }
 
 struct Block {
@@ -76,7 +76,7 @@ impl<'a> Chunk<'a> {
     }
 
     fn prefix(&self, line: &Line) -> String {
-        let who = label(self.layout.speakers.get(&line.user_id).copied().unwrap_or(0));
+        let who = label(self.layout.speakers.get(&line.user_id).unwrap_or(&Person::default()));
         if self.layout.timestamps {
             format!("[{}] {who}: ", clock(line.start_ms - self.layout.started_ms))
         } else {
@@ -89,9 +89,13 @@ impl<'a> Chunk<'a> {
     }
 }
 
-pub fn label(ord: i64) -> String {
-    if ord > 0 {
-        format!("Speaker {ord}")
+/// The name the host sent, made safe to read as speech; `Speaker N` when there is none.
+pub fn label(person: &Person) -> String {
+    let name = tidy(&person.name);
+    if !name.is_empty() {
+        name
+    } else if person.ord > 0 {
+        format!("Speaker {}", person.ord)
     } else {
         "Speaker".to_string()
     }
@@ -171,7 +175,11 @@ mod tests {
         Line { user_id: user.to_string(), start_ms, end_ms, body: body.to_string() }
     }
 
-    fn layout(speakers: &HashMap<String, i64>) -> Layout<'_> {
+    fn person(ord: i64, name: &str) -> Person {
+        Person { ord, name: name.to_string() }
+    }
+
+    fn layout(speakers: &HashMap<String, Person>) -> Layout<'_> {
         Layout { started_ms: 1_000, merge_gap_ms: 30_000, timestamps: true, speakers }
     }
 
@@ -200,7 +208,7 @@ mod tests {
 
     #[test]
     fn a_speaker_who_talks_on_is_one_block_and_a_pause_or_another_voice_starts_a_new_one() {
-        let people = HashMap::from([("a".to_string(), 1), ("b".to_string(), 2)]);
+        let people = HashMap::from([("a".to_string(), person(1, "")), ("b".to_string(), person(2, ""))]);
         let layout = layout(&people);
         let mut chunk = Chunk::new(&layout);
         for l in [
@@ -217,8 +225,17 @@ mod tests {
     }
 
     #[test]
+    fn a_name_replaces_the_number_and_a_missing_one_falls_back_to_it() {
+        let people = HashMap::from([("a".to_string(), person(1, "Ada @everyone")), ("b".to_string(), person(2, ""))]);
+        let layout = layout(&people);
+        let mut chunk = Chunk::new(&layout);
+        assert!(chunk.push(&line("a", 2_000, 3_000, "hello")) && chunk.push(&line("b", 6_000, 7_000, "hi")));
+        assert_eq!(chunk.text(), "[0:01] Ada \u{FF20}everyone: hello\n[0:05] Speaker 2: hi");
+    }
+
+    #[test]
     fn timestamps_can_be_left_out() {
-        let people = HashMap::from([("a".to_string(), 1)]);
+        let people = HashMap::from([("a".to_string(), person(1, ""))]);
         let layout = Layout { timestamps: false, ..layout(&people) };
         let mut chunk = Chunk::new(&layout);
         assert!(chunk.push(&line("a", 2_000, 3_000, "hello")));
@@ -227,7 +244,7 @@ mod tests {
 
     #[test]
     fn a_chunk_refuses_the_line_that_would_overflow_a_message_and_never_an_empty_one() {
-        let people = HashMap::from([("a".to_string(), 1), ("b".to_string(), 2)]);
+        let people = HashMap::from([("a".to_string(), person(1, "")), ("b".to_string(), person(2, ""))]);
         let layout = layout(&people);
         let mut chunk = Chunk::new(&layout);
         let long = "word ".repeat(180);

@@ -31,6 +31,13 @@ pub struct Call {
     pub parts: i64,
 }
 
+/// A person in a call: the number they hold once they spoke, and the name the host sent, if it sent one.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Person {
+    pub ord: i64,
+    pub name: String,
+}
+
 /// One stored utterance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
@@ -154,17 +161,17 @@ impl<'a, H: Host> Store<'a, H> {
         Ok(())
     }
 
-    /// Adds people to a call, at most 50 to a host call.
-    pub fn insert_people(&self, session_id: &str, users: &[String]) -> Result<(), String> {
+    /// Adds people to a call with the names the host gave them, at most 50 to a host call.
+    pub fn insert_people(&self, session_id: &str, users: &[(String, String)]) -> Result<(), String> {
         for batch in users.chunks(50) {
-            let rows: Vec<Value> = batch.iter().map(|u| person(session_id, u, true)).collect();
+            let rows: Vec<Value> = batch.iter().map(|(user, name)| person(session_id, (user, name), true)).collect();
             self.data("insert", "people", json!({"rows": rows}))?;
         }
         Ok(())
     }
 
-    pub fn set_included(&self, session_id: &str, user: &str, included: bool) -> Result<(), String> {
-        self.data("upsert", "people", json!({"values": person(session_id, user, included), "on": "pkey"})).map(|_| ())
+    pub fn set_included(&self, session_id: &str, (user, name): (&str, &str), included: bool) -> Result<(), String> {
+        self.data("upsert", "people", json!({"values": person(session_id, (user, name), included), "on": "pkey"})).map(|_| ())
     }
 
     /// Whether a person is in the call's agreed set and the speaker number they hold; `None` when they were never in it.
@@ -178,10 +185,16 @@ impl<'a, H: Host> Store<'a, H> {
         self.data("update", "people", json!({"values": {"ord": ord}, "where": filters})).map(|_| ())
     }
 
-    /// Speaker numbers by user id; zero for someone who never spoke.
-    pub fn speakers(&self, session_id: &str) -> Result<HashMap<String, i64>, String> {
+    /// Speaker numbers and names by user id; number zero for someone who never spoke, an empty name when none was sent.
+    pub fn speakers(&self, session_id: &str) -> Result<HashMap<String, Person>, String> {
         let reply = self.data("query", "people", json!({"where": [eq("session_id", session_id)], "limit": PAGE}))?;
-        Ok(rows(&reply).iter().filter_map(|r| Some((r["user_id"].as_str()?.to_string(), r["ord"].as_i64().unwrap_or(0)))).collect())
+        Ok(rows(&reply)
+            .iter()
+            .filter_map(|r| {
+                let person = Person { ord: r["ord"].as_i64().unwrap_or(0), name: r["name"].as_str().unwrap_or("").to_string() };
+                Some((r["user_id"].as_str()?.to_string(), person))
+            })
+            .collect())
     }
 
     /// False when the host already holds this segment.
@@ -209,8 +222,13 @@ fn eq(col: &str, val: &str) -> Value {
     json!({"col": col, "op": "eq", "val": val})
 }
 
-fn person(session_id: &str, user: &str, included: bool) -> Value {
-    json!({"pkey": format!("{session_id}:{user}"), "session_id": session_id, "user_id": user, "included": included})
+/// A name is kept only when one was sent, so a later event without it never blanks a name already held.
+fn person(session_id: &str, (user, name): (&str, &str), included: bool) -> Value {
+    let mut row = json!({"pkey": format!("{session_id}:{user}"), "session_id": session_id, "user_id": user, "included": included});
+    if !name.is_empty() {
+        row["name"] = json!(name);
+    }
+    row
 }
 
 fn rows(reply: &Value) -> &[Value] {

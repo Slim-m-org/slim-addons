@@ -19,7 +19,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/transcript/0.1.0/module.wasm",
-    "sha256": "1ec0a6ea98e4f22235c5cd7aa8757588f5079d344c216ca20d09181c52a185da"
+    "sha256": "258447e8b8ea8095a2f55357ea6e3936739b63fd332de1f060a23344eaf716dd"
   },
   "permissions": [
     {
@@ -135,6 +135,10 @@
           {
             "name": "ord",
             "type": "int"
+          },
+          {
+            "name": "name",
+            "type": "text"
           }
         ]
       },

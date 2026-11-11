@@ -66,6 +66,22 @@ fn a_call_is_posted_once_when_it_ends_with_numbered_speakers_and_clock_offsets()
 }
 
 #[test]
+fn speakers_carry_the_names_the_host_sent_and_fall_back_to_numbers_for_those_it_did_not() {
+    let host = FakeHost::default();
+    let data = json!({"session_id": S, "channel_id": "c1", "started_at_ms": T0, "included": ["ada", "bob"], "names": {"ada": "Ada Lovelace"}});
+    event(&host, "call.audio.started", data);
+    event(&host, "call.audio.participant", json!({"session_id": S, "user_id": "cleo", "included": true, "name": "Cleo"}));
+    say(&host, S, "ada", (5, 6), "hello");
+    say(&host, S, "bob", (10, 11), "hi");
+    say(&host, S, "cleo", (15, 16), "hey");
+    event(&host, "call.audio.participant", json!({"session_id": S, "user_id": "ada", "included": true}));
+    say(&host, S, "ada", (50, 51), "later");
+    stop(&host, S, "stopped", 4);
+    let body = &posts(&host)[0];
+    assert!(body.contains("[0:05] Ada Lovelace: hello\n[0:10] Speaker 2: hi\n[0:15] Cleo: hey\n[0:50] Ada Lovelace: later"), "{body}");
+}
+
+#[test]
 fn lines_are_ordered_by_when_they_were_said_not_when_they_arrived() {
     let host = FakeHost::default();
     start(&host, S, &["ada", "bob"]);

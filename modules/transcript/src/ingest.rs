@@ -12,6 +12,9 @@ use crate::store::{Line, Store};
 /// Longest a stored utterance may be; the host cuts at 1,000 already, so this only guards a bad sender.
 const MAX_LINE_CHARS: usize = 1_000;
 
+/// Longest a speaker name may be in a transcript; the host's own limit is shorter, so this only guards a bad sender.
+const MAX_NAME_CHARS: usize = 80;
+
 pub fn on_event<H: Host>(store: &Store<H>, settings: &Settings, input: &str) -> Result<String, String> {
     let event: Value = serde_json::from_str(input).map_err(|_| "the event was not JSON".to_string())?;
     let data = &event["data"];
@@ -31,17 +34,30 @@ fn started<H: Host>(store: &Store<H>, data: &Value) -> Result<String, String> {
     if !store.insert_call(session, at)? {
         return Ok("Already started.".to_string());
     }
-    let users: Vec<String> = data["included"].as_array().into_iter().flatten().filter_map(|u| u.as_str().map(str::to_string)).collect();
+    let names = &data["names"];
+    let users: Vec<(String, String)> = data["included"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|u| u.as_str())
+        .map(|u| (u.to_string(), clean_name(&names[u])))
+        .collect();
     store.insert_people(session, &users)?;
     Ok(format!("Listening with {} people.", users.len()))
+}
+
+/// The name the host sent, or empty when it sent none (an older server) or something unusable.
+fn clean_name(name: &Value) -> String {
+    name.as_str().map(|n| n.chars().take(MAX_NAME_CHARS).collect::<String>()).unwrap_or_default()
 }
 
 fn participant<H: Host>(store: &Store<H>, data: &Value) -> Result<String, String> {
     let (Some(session), Some(user), Some(included)) = (data["session_id"].as_str(), data["user_id"].as_str(), data["included"].as_bool()) else {
         return Err("the participant event had no session, person or answer".to_string());
     };
+    let name = clean_name(&data["name"]);
     match store.call(session)? {
-        Some(call) if call.state == "on" => store.set_included(session, user, included).map(|()| "Noted.".to_string()),
+        Some(call) if call.state == "on" => store.set_included(session, (user, &name), included).map(|()| "Noted.".to_string()),
         _ => Ok("Ignored: no call here.".to_string()),
     }
 }

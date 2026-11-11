@@ -21,11 +21,12 @@ _End of transcript._
 - The last message says `End of transcript.`, and says so when segments never arrived or the call stopped early.
 - Speech can never mention anyone: `@` is swapped for a look-alike.
 
-## Speakers are numbers, not names
+## Speaker names
 
-slim tells a module only a user id, and gives it no way to turn that into a display name.
-So speakers are `Speaker 1`, `Speaker 2` and so on, in the order the module first heard them.
-Names need slim to send a display name with the call events, or a host call that resolves a member.
+slim sends each person's display name (their username when they have none) with `call.audio.started` and `call.audio.participant`, and the transcript labels speakers with it.
+A name is flattened to one line and `@` is swapped for a look-alike, like speech.
+On a server that sends no names, or for a person it did not name, speakers are `Speaker 1`, `Speaker 2` and so on, in the order the module first heard them.
+A name is the one the person had when the call started or when they joined it.
 
 ## Consent
 
@@ -58,7 +59,7 @@ It needs the `post` permission, which an admin grants.
 | table | holds |
 | --- | --- |
 | `calls` | one row per call: times, state (`on`, `done`, `posted`), why it stopped, how many segments arrived, were sent and were dropped, how many lines are posted |
-| `people` | who is in the agreed set of a call and the speaker number they hold |
+| `people` | who is in the agreed set of a call, the speaker number they hold and the name slim gave them |
 | `lines` | each utterance: speaker, start, end and text, at most 1,000 characters |
 
 User ids are in columns marked `member`, so deleting an account removes their lines.
