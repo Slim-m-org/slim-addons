@@ -1,0 +1,235 @@
+{
+  "schema": 1,
+  "addon_api": 4,
+  "id": "transcript",
+  "name": "Call transcript",
+  "version": "0.1.0",
+  "summary": "Writes down a voice call, with everyone's agreement, and posts the transcript when it ends.",
+  "description": "When everyone in a voice call has agreed to it, Call transcript writes down what is said and posts a readable transcript in the channel an admin picked, as Call transcript, once the call ends. Each speaker is a number, lines are timed from the start of the call, and a speaker's lines that follow each other are one paragraph. A long call is posted as several messages. /transcript posts what has been said so far in a call that is on. It hears a call only in the voice channels an admin chose for it, never starts by itself, and keeps no audio: speech is turned into text by a service the server's operator runs, and this module only receives the text. It uses call.audio to receive that text, data.store to keep it until the call ends and for the days you set, message.post to post it, and schedule to post a long transcript's later parts and to tidy up. An admin approves each when installing.",
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/transcript/0.1.0/module.wasm",
+    "sha256": "258447e8b8ea8095a2f55357ea6e3936739b63fd332de1f060a23344eaf716dd"
+  },
+  "permissions": [
+    {
+      "key": "post",
+      "name": "Post the transcript so far",
+      "description": "Post what has been said in a call that is on, in the channel you run it in."
+    },
+    {
+      "key": "flush",
+      "name": "Post waiting transcripts now",
+      "description": "Post finished transcripts and tidy up now instead of waiting for the timer. The timer does this on its own; hardly anyone needs it."
+    }
+  ],
+  "capabilities": [
+    "call.audio",
+    "command.register",
+    "data.store",
+    "message.post",
+    "schedule"
+  ],
+  "call_audio": {
+    "purpose": "Writes down what is said in the call and posts the transcript in a channel when the call ends.",
+    "keeps": "What each speaker said, with times and a speaker number, in this module's own data for 30 days unless an admin changes it."
+  },
+  "schedules": [
+    {
+      "command": "flush",
+      "every_minutes": 5
+    }
+  ],
+  "data": {
+    "max_mb": 16,
+    "tables": [
+      {
+        "name": "calls",
+        "columns": [
+          {
+            "name": "session_id",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "started_ms",
+            "type": "int",
+            "index": true
+          },
+          {
+            "name": "stopped_ms",
+            "type": "int"
+          },
+          {
+            "name": "last_ms",
+            "type": "int",
+            "index": true
+          },
+          {
+            "name": "state",
+            "type": "text",
+            "index": true
+          },
+          {
+            "name": "reason",
+            "type": "text"
+          },
+          {
+            "name": "sent",
+            "type": "int"
+          },
+          {
+            "name": "seen",
+            "type": "int"
+          },
+          {
+            "name": "dropped",
+            "type": "int"
+          },
+          {
+            "name": "speakers",
+            "type": "int"
+          },
+          {
+            "name": "posted",
+            "type": "int"
+          },
+          {
+            "name": "parts",
+            "type": "int"
+          }
+        ]
+      },
+      {
+        "name": "people",
+        "columns": [
+          {
+            "name": "pkey",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "session_id",
+            "type": "text",
+            "index": true
+          },
+          {
+            "name": "user_id",
+            "type": "text",
+            "member": true
+          },
+          {
+            "name": "included",
+            "type": "bool"
+          },
+          {
+            "name": "ord",
+            "type": "int"
+          },
+          {
+            "name": "name",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "lines",
+        "columns": [
+          {
+            "name": "segment_id",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "session_id",
+            "type": "text",
+            "index": true
+          },
+          {
+            "name": "user_id",
+            "type": "text",
+            "member": true
+          },
+          {
+            "name": "start_ms",
+            "type": "int"
+          },
+          {
+            "name": "end_ms",
+            "type": "int"
+          },
+          {
+            "name": "body",
+            "type": "text"
+          }
+        ]
+      }
+    ]
+  },
+  "settings": [
+    {
+      "key": "keep_days",
+      "type": "int",
+      "label": "Keep for (days)",
+      "help": "How long a transcript stays stored after the call.",
+      "default": 30,
+      "min": 1,
+      "max": 90
+    },
+    {
+      "key": "merge_gap_s",
+      "type": "int",
+      "label": "Merge pauses (seconds)",
+      "help": "One speaker's lines closer together than this read as one paragraph.",
+      "default": 30,
+      "min": 1,
+      "max": 300
+    },
+    {
+      "key": "timestamps",
+      "type": "bool",
+      "label": "Show times",
+      "help": "Put the time into the call before each paragraph.",
+      "default": true
+    }
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "transcript",
+      "permission": "post",
+      "description": "Post what has been said in the call so far."
+    },
+    {
+      "kind": "slash-command",
+      "name": "transcript",
+      "permission": "post",
+      "command": "transcript",
+      "description": "Post what has been said in the call so far."
+    },
+    {
+      "kind": "command",
+      "name": "flush",
+      "permission": "flush",
+      "description": "Post waiting transcripts and tidy up."
+    }
+  ],
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: a transcript of a voice call, posted when it ends, and /transcript for the call so far."
+      ]
+    }
+  ]
+}
