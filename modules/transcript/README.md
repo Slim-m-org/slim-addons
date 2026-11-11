@@ -107,3 +107,13 @@ $R --data-file /tmp/t --event call.audio.started '{"session_id":"s1","channel_id
 $R --data-file /tmp/t --event call.audio.segment '{"session_id":"s1","channel_id":"c1","segment_id":"call-audio:s1:2","user_id":"u1","start_ms":1700000005000,"end_ms":1700000008000,"text":"hello","language":"en"}' $W
 $R --data-file /tmp/t --event call.audio.stopped '{"session_id":"s1","channel_id":"c1","stopped_at_ms":1700000600000,"reason":"call_ended","segments_sent":1}' $W
 ```
+
+The end-to-end run starts a real `slimm-server` with this repository as the Dock's dev origin, and a stand-in for the call-audio listener that speaks `listener/1` over a real WebSocket.
+It installs the module as the admin, puts two members in a call through signed LiveKit webhooks, has both agree, plays scripted speech from the listener (including a speaker who never agreed), runs `/transcript`, stops the call, and reads the transcript the module posted.
+No audio and no whisper model are involved; it checks everything from the text segments on.
+It needs `pip install websockets` and about a minute.
+
+```bash
+scripts/package-module.sh modules/transcript   # rebuild the wasm the dev origin serves
+python3 scripts/e2e-transcript.py --server /path/to/slimm-server
+```
