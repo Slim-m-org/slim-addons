@@ -2,10 +2,16 @@
   "schema": 1,
   "id": "tic-tac-toe",
   "name": "Tic-tac-toe",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "summary": "Play tic-tac-toe in the channel.",
-  "description": "Launch a tic-tac-toe board from the apps menu (or type /tic-tac-toe) and play it in the channel. The first person to move is X, the next different person is O, and moves out of turn are refused. Everyone else watches. Each message is its own game, and 'new game' restarts it. The board and the two players' opaque module ids are kept in the message itself; the module stores nothing and learns nothing else about you.",
+  "description": "Launch a tic-tac-toe board from the apps menu (or type /tic-tac-toe) and play it in the channel, or add one to a voice canvas from its menu. The first person to move is X, the next different person is O, and moves out of turn are refused. Everyone else watches. Each message or canvas tile is its own game, and 'new game' restarts it. The board and the two players' opaque module ids are kept in the message or tile itself; the module stores nothing and learns nothing else about you.",
   "changelog": [
+    {
+      "version": "0.3.0",
+      "changes": [
+        "Can be added to a voice canvas as a tile everyone in the call plays. Needs a server with add-on API 6."
+      ]
+    },
     {
       "version": "0.2.2",
       "changes": [
@@ -43,7 +49,7 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/tic-tac-toe/0.2.2/module.wasm",
+    "path": "modules/tic-tac-toe/0.3.0/module.wasm",
     "sha256": "6014a59bd9f6b7f7ab19b1b34f904f03f373998f84272e8111ce85144e4274f9"
   },
   "permissions": [
@@ -69,6 +75,14 @@
       "permission": "play",
       "command": "play",
       "description": "Launch a shared tic-tac-toe board."
+    },
+    {
+      "kind": "canvas-tile",
+      "name": "Tic-tac-toe",
+      "permission": "play",
+      "command": "play",
+      "description": "A shared tic-tac-toe board on the canvas."
     }
-  ]
+  ],
+  "addon_api": 6
 }

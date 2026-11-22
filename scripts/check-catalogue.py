@@ -83,8 +83,10 @@ for mid in sorted(on_disk & listed.keys()):
     for e in m["extension_points"]:
         if e.get("permission") not in keys:
             fail(mid, f"extension point {e['name']} uses an undeclared permission")
-        if e["kind"] in ("slash-command", "code-block-runner", "app") and e.get("command") not in names:
+        if e["kind"] in ("slash-command", "code-block-runner", "app", "canvas-tile") and e.get("command") not in names:
             fail(mid, f"extension point {e['name']} runs an undeclared command")
+        if e["kind"] == "canvas-tile" and m.get("addon_api", 0) < 6:
+            fail(mid, f"canvas tile {e['name']} needs \"addon_api\": 6, or a server refuses the install")
     check_changelog(mid, m)
 
 def at_base(ref, path):

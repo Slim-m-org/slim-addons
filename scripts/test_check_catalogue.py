@@ -85,6 +85,27 @@ class CatalogueTest(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn("another version's wasm", done.stderr)
 
+    def test_a_canvas_tile_needs_level_six_and_a_declared_command(self):
+        def tile(command, level):
+            def change(manifest):
+                manifest["extension_points"].append({"kind": "canvas-tile", "name": "T", "permission": manifest["permissions"][0]["key"], "command": command})
+                manifest["addon_api"] = level
+            return change
+
+        self.edit_manifest("table", tile("nope", 6))
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("runs an undeclared command", done.stderr)
+
+    def test_a_canvas_tile_below_level_six_is_refused(self):
+        def low(manifest):
+            manifest["addon_api"] = 5
+
+        self.edit_manifest("tic-tac-toe", low)
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("needs \"addon_api\": 6", done.stderr)
+
     def test_a_changelog_whose_newest_entry_is_another_version_is_refused(self):
         def stale(manifest):
             manifest["changelog"] = [{"version": "0.0.1", "changes": ["old"]}]
