@@ -1,7 +1,7 @@
 # The noughts module: noughts and crosses kept as a call's shared room state.
 [package]
 name = "noughts"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 publish = false

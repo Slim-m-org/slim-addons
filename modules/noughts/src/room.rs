@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::game::{self, Game, Step};
+use crate::scene;
 
 pub const COMMAND: &str = "@room";
 const CONTRACT: &str = "room/1";
@@ -26,7 +27,10 @@ pub fn answer(input: &str, caller: &str) -> String {
     };
     let game = parsed.state.map(Game::checked).unwrap_or_default();
     match game::apply(game, parsed.input.trim(), caller) {
-        Ok(Step::Next(next)) => json!({ "$slim": CONTRACT, "state": next }).to_string(),
+        Ok(Step::Next(next)) => {
+            let drawn = scene::render(&next);
+            json!({ "$slim": CONTRACT, "state": next, "scene": drawn }).to_string()
+        }
         Ok(Step::End) => json!({ "$slim": CONTRACT, "end": true }).to_string(),
         Err(why) => reject(why),
     }
@@ -52,6 +56,18 @@ mod tests {
         assert_eq!(out["$slim"], "room/1");
         assert_eq!(out["state"]["board"], "....x....");
         assert_eq!(out["state"]["x"], "aa");
+        assert_eq!(out["scene"]["$slim"], "scene/1");
+        assert_eq!(out["scene"]["status"], "O to move: tap a square to join");
+    }
+
+    #[test]
+    fn opening_the_call_scene_shows_the_board_as_it_is() {
+        let fresh = r#"{"$slim":"room/1","room":{"channel_id":"c","kind":"voice"},"seq":0,"state":null,"input":""}"#;
+        let out = reply(fresh, "aa");
+        assert_eq!(out["state"]["board"], ".........");
+        assert_eq!(out["state"]["x"], serde_json::Value::Null);
+        let held = r#"{"$slim":"room/1","room":{"channel_id":"c","kind":"voice"},"seq":3,"state":{"board":"x...o....","next":"x","x":"aa","o":"bb","winner":null},"input":""}"#;
+        assert_eq!(reply(held, "cc")["state"]["board"], "x...o....");
     }
 
     #[test]

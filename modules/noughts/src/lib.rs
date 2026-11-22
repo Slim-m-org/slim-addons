@@ -8,6 +8,7 @@
 
 mod game;
 mod room;
+mod scene;
 
 use std::alloc::{alloc as std_alloc, Layout};
 

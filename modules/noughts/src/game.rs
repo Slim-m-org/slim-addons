@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::scene::{END_GAME, NEW_GAME};
+
 const EMPTY: u8 = b'.';
 const LINES: [[usize; 3]; 8] = [
     [0, 1, 2],
@@ -66,12 +68,19 @@ impl Game {
     }
 }
 
-/// Applies one input from `caller`: a cell `0` to `8`, `new` or `end`.
+/// Applies one input from `caller`: a cell `0` to `8`, `new` or `end`, or
+/// nothing, which is how a call's stage opens the board and changes nothing.
 pub fn apply(game: Game, input: &str, caller: &str) -> Result<Step, &'static str> {
     if caller.is_empty() {
         return Err("this server did not say who you are");
     }
+    let input = match input {
+        NEW_GAME => "new",
+        END_GAME => "end",
+        other => other,
+    };
     match input {
+        "" => Ok(Step::Next(game)),
         "new" if game.seated(caller) || game.winner.is_some() || game.nobody_seated() => {
             Ok(Step::Next(Game::default()))
         }
@@ -210,7 +219,12 @@ mod tests {
             apply(game.clone(), "end", "cc"),
             Err("only a player can end the game")
         );
-        assert_eq!(apply(game, "end", "bb"), Ok(Step::End));
+        assert_eq!(apply(game.clone(), "end", "bb"), Ok(Step::End));
+        assert_eq!(apply(game.clone(), "end game", "bb"), Ok(Step::End));
+        assert_eq!(
+            apply(game, "new game", "aa"),
+            Ok(Step::Next(Game::default()))
+        );
     }
 
     #[test]

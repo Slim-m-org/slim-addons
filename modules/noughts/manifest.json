@@ -2,10 +2,16 @@
   "schema": 1,
   "id": "noughts",
   "name": "Noughts and crosses",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "summary": "Noughts and crosses for a call, kept in step for everyone in it.",
-  "description": "A game of noughts and crosses that lives in a voice call or a channel as shared room state. Anyone taking part sends a cell from 0 to 8; the first person to move plays X, the next different person plays O, and everyone else watches. The server keeps the board between moves, applies one move at a time in the order they arrive, and sends each new board to everyone who can see the room, including people who join late. Sending new starts over and end clears the board. The board and the two players' opaque module ids are the whole state; nothing is stored once the call ends.",
+  "description": "A game of noughts and crosses that lives in a voice call or a channel as shared room state. In a call it opens on the call's stage, where anyone taking part taps a square to play: the first person to move plays X, the next different person plays O, and everyone else watches. The server keeps the board between moves, applies one move at a time in the order they arrive, and sends each new board to everyone who can see the room, including people who join late. New game starts over and end game clears the board. The board and the two players' opaque module ids are the whole state; nothing is stored once the call ends.",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "changes": [
+        "Opens on a call's stage: tap a square to play, with new game and end game under the board."
+      ]
+    },
     {
       "version": "0.1.0",
       "changes": [
@@ -26,12 +32,19 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/noughts/0.1.0/module.wasm",
-    "sha256": "df1324a1693ba926e7f8f84ae1a3cb3ce32a11d45711318043f120c3ff70bb53"
+    "path": "modules/noughts/0.2.0/module.wasm",
+    "sha256": "6c1a24786ea8591cc54fafd1fb226596c8fa8709b78f08057032635ac113c2d7"
   },
   "permissions": [],
   "capabilities": [
     "room.state"
+  ],
+  "slots": [
+    {
+      "kind": "call.scene",
+      "name": "board",
+      "title": "Noughts and crosses"
+    }
   ],
   "extension_points": []
 }

@@ -178,7 +178,7 @@
     {
       "id": "noughts",
       "name": "Noughts and crosses",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "summary": "Noughts and crosses for a call, kept in step for everyone in it."
     }
   ]
