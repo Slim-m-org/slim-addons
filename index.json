@@ -124,7 +124,7 @@
     {
       "id": "checklist",
       "name": "Checklist",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "summary": "A shared checklist and notes everyone in the channel can edit."
     },
     {
