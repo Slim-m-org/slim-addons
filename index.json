@@ -46,7 +46,7 @@
     {
       "id": "tic-tac-toe",
       "name": "Tic-tac-toe",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "summary": "Play tic-tac-toe in the channel."
     },
     {
@@ -124,7 +124,7 @@
     {
       "id": "checklist",
       "name": "Checklist",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "summary": "A shared checklist and notes everyone in the channel can edit."
     },
     {
@@ -174,6 +174,12 @@
       "name": "Undergrowth",
       "version": "0.1.0",
       "summary": "A fungal turf war living under your space: messages fall as leaves, reactions bring rain, calls bring warmth, and up to six colonies grow, fight and fruit mushrooms that sing."
+    },
+    {
+      "id": "noughts",
+      "name": "Noughts and crosses",
+      "version": "0.2.0",
+      "summary": "Noughts and crosses for a call, kept in step for everyone in it."
     }
   ]
 }

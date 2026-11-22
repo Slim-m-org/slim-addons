@@ -74,7 +74,7 @@ def main():
         if manifest.parent.name == "_template":
             continue
         m = json.loads(manifest.read_text())
-        for command in sorted({e["command"] for e in m["extension_points"] if e["kind"] == "app"}):
+        for command in sorted({e["command"] for e in m["extension_points"] if e["kind"] in ("app", "canvas-tile")}):
             wasm = str(root / m["artifact"]["path"])
             problems, count = check_app(scene_ops, runner, wasm, command)
             print(f"{m['id']} {command}: {'FAILED' if problems else 'ok'} ({count} frames)")

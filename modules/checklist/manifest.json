@@ -2,10 +2,16 @@
   "schema": 1,
   "id": "checklist",
   "name": "Checklist",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "summary": "A shared checklist and notes everyone in the channel can edit.",
-  "description": "Launch a checklist from the apps menu (or type /checklist, optionally with a title) and keep it in the channel. Anyone looking at the message can add an item from the text field, tap an item to tick or untick it, remove one, or clear everything that is done, and there is a short shared notes field underneath. The whole list lives in the message itself, so it needs no storage. It holds up to 24 items of 40 characters, 280 characters of notes and a 40 character title; anything longer is explained under the list rather than dropped.",
+  "description": "Launch a checklist from the apps menu (or type /checklist, optionally with a title) and keep it in the channel. Anyone looking at the message can add an item from the text field, tap an item to tick or untick it, remove one, or clear everything that is done, and there is a short shared notes field underneath. The whole list lives in the message itself, so it needs no storage. It holds up to 24 items of 40 characters, 280 characters of notes and a 40 character title; anything longer is explained under the list rather than dropped. It can also stay open as a panel beside the chat, a list of your own that keeps its items while you move between channels; that panel needs a server on add-on API 6.",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "changes": [
+        "Adds a panel: your own checklist, kept open beside the chat while you move between channels. Needs add-on API 6."
+      ]
+    },
     {
       "version": "0.1.1",
       "changes": [
@@ -31,7 +37,7 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/checklist/0.1.1/module.wasm",
+    "path": "modules/checklist/0.2.0/module.wasm",
     "sha256": "0328fcec9fa602d8c3e47bdd41f397576dcf3a868a1f4e077dc00b6ea3adcdd6"
   },
   "permissions": [
@@ -64,6 +70,14 @@
       "permission": "edit",
       "command": "checklist",
       "description": "Launch a shared checklist with notes."
+    },
+    {
+      "kind": "panel",
+      "name": "My checklist",
+      "permission": "edit",
+      "command": "checklist",
+      "description": "Your own checklist and notes, kept open beside the chat."
     }
-  ]
+  ],
+  "addon_api": 6
 }
