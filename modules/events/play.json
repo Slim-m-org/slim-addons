@@ -1,5 +1,10 @@
 {
  "command": "event",
+ "names": {
+  "a1": "Ada",
+  "b2": "Bea",
+  "c3": "Cy"
+ },
  "scenarios": [
   {
    "name": "launch is a form with the input",
@@ -44,7 +49,7 @@
    ]
   },
   {
-   "name": "answers move, and names show in the list",
+   "name": "answers move, and the list shows the names members see",
    "now_ms": 1700000000000,
    "steps": [
     {
@@ -57,7 +62,8 @@
      "expect": {
       "status": "2 going, 0 maybe, 0 can't",
       "text_has": [
-       "Going (2)"
+       "Going (2)",
+       "Ada, Bea"
       ]
      }
     },
@@ -67,7 +73,8 @@
      "expect": {
       "status": "2 going, 1 maybe, 0 can't",
       "text_has": [
-       "Maybe (1)"
+       "Maybe (1)",
+       "Cy"
       ]
      }
     },
@@ -75,13 +82,7 @@
      "as": "b2",
      "do": "Can't",
      "expect": {
-      "status": "1 going, 1 maybe, 1 can't"
-     }
-    },
-    {
-     "as": "b2",
-     "do": "name:Bea",
-     "expect": {
+      "status": "1 going, 1 maybe, 1 can't",
       "text_has": [
        "Bea"
       ]
@@ -89,10 +90,23 @@
     },
     {
      "as": "d4",
+     "do": "Going",
+     "expect": {
+      "text_has": [
+       "Ada, member d4"
+      ],
+      "text_lack": [
+       "Dee"
+      ]
+     }
+    },
+    {
+     "as": "d4",
      "do": "name:Dee",
      "expect": {
-      "ok": false,
-      "error_has": "answer Going"
+      "text_lack": [
+       "Dee"
+      ]
      }
     }
    ]

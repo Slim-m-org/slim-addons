@@ -14,8 +14,22 @@ fn call(host: &FakeHost, command: &str, input: &str, caller: &str, now_ms: i64) 
 }
 
 fn call_in(host: &FakeHost, command: &str, input: &str, caller: &str, now_ms: i64, channel: &str) -> Value {
-    let request = json!({"command": command, "input": input, "caller": {"id": caller}, "entropy": "abcdef0123456789", "now_ms": now_ms, "context": {"channel_id": channel}});
+    let mut who = json!({"id": caller});
+    if let Some(name) = name_of(caller) {
+        who["name"] = json!(name);
+    }
+    let request = json!({"command": command, "input": input, "caller": who, "entropy": "abcdef0123456789", "now_ms": now_ms, "context": {"channel_id": channel}});
     serde_json::from_slice(&handle(host, request.to_string().as_bytes())).unwrap()
+}
+
+/// The display name slim would send for these callers; the others come with none.
+fn name_of(caller: &str) -> Option<&'static str> {
+    match caller {
+        "host-1" => Some("Hana"),
+        "bob-id" => Some("Bob"),
+        "carol-id" => Some("Carol"),
+        _ => None,
+    }
 }
 
 fn press(host: &FakeHost, id: &str, action: &str, caller: &str, now_ms: i64) -> Value {
@@ -85,7 +99,7 @@ fn a_bad_plan_shows_the_form_with_what_was_wrong_and_stores_nothing() {
 }
 
 #[test]
-fn people_answer_change_their_answer_and_see_who_is_going() {
+fn people_answer_change_their_answer_and_see_who_is_going_by_name() {
     let host = FakeHost::default();
     let id = plan(&host, "in 5h");
     press(&host, &id, "Going", "bob-id", NOW);
@@ -93,18 +107,30 @@ fn people_answer_change_their_answer_and_see_who_is_going() {
     let frame = press(&host, &id, "Can't", "bob-id", NOW);
     assert_eq!(scene(&frame)["status"], "1 going, 1 maybe, 1 can't");
     assert!(texts(&frame).contains(&"Maybe (1)".to_owned()));
-    let named = press(&host, &id, "name:Bob", "bob-id", NOW);
-    assert!(texts(&named).contains(&"Bob".to_owned()));
+    let shown = texts(&press(&host, &id, "Going", "bob-id", NOW));
+    assert!(shown.contains(&"Hana, Bob".to_owned()), "{shown:?}");
 }
 
 #[test]
-fn naming_yourself_before_answering_is_refused_and_a_plain_press_redraws() {
+fn a_member_slim_sent_no_name_for_is_listed_by_a_short_id_and_a_later_name_replaces_it() {
     let host = FakeHost::default();
     let id = plan(&host, "in 5h");
-    let refused = call(&host, "event", &json!({"action": "name:Dave", "state": id}).to_string(), "dave-id", NOW);
-    assert_eq!(refused["ok"], false);
-    assert!(refused["error"].as_str().unwrap().contains("answer Going"));
-    assert_eq!(scene(&press(&host, &id, "refresh", "dave-id", NOW))["state"], id.as_str());
+    let shown = texts(&press(&host, &id, "Going", "dave-id", NOW));
+    assert!(shown.contains(&"Hana, member dave".to_owned()), "{shown:?}");
+    let request = json!({"command": "event", "input": json!({"action": "Going", "state": id}).to_string(), "caller": {"id": "dave-id", "name": "Dave"}, "now_ms": NOW});
+    let again: Value = serde_json::from_slice(&handle(&host, request.to_string().as_bytes())).unwrap();
+    assert!(texts(&again).contains(&"Hana, Dave".to_owned()));
+    assert!(!texts(&press(&host, &id, "refresh", "dave-id", NOW)).contains(&"nobody yet".to_owned()));
+}
+
+#[test]
+fn the_old_name_box_is_gone_and_a_name_action_just_redraws() {
+    let host = FakeHost::default();
+    let id = plan(&host, "in 5h");
+    let frame = press(&host, &id, "Going", "bob-id", NOW);
+    assert!(scene(&frame)["ops"].as_array().unwrap().iter().all(|o| o["submit"] != "name"));
+    let redrawn = press(&host, &id, "name:Hacker", "bob-id", NOW);
+    assert!(!texts(&redrawn).contains(&"Hacker".to_owned()));
 }
 
 #[test]
@@ -160,11 +186,12 @@ fn an_edit_after_the_reminder_went_out_sends_a_new_one() {
 }
 
 #[test]
-fn the_reminder_names_the_event_and_who_is_going_and_cannot_mention_anyone() {
+fn the_reminder_mentions_everyone_going_by_caller_id_and_only_them() {
     let host = FakeHost::default();
     let id = plan(&host, "2025-11-25 20:00 +02:00");
-    press(&host, &id, "Going", "bob-id", NOW);
-    press(&host, &id, "name:@everyone", "bob-id", NOW);
+    let bob = "b".repeat(64);
+    press(&host, &id, "Going", &bob, NOW);
+    press(&host, &id, "Maybe", "carol-id", NOW);
     let due = stored(&host, &id).rem;
     assert_eq!(due, NOW + 25 * HOUR);
     let early = call(&host, "tick", &id, "bot", NOW + HOUR);
@@ -173,10 +200,25 @@ fn the_reminder_names_the_event_and_who_is_going_and_cannot_mention_anyone() {
     assert_eq!(call(&host, "tick", &id, "bot", due)["output"], "Posted the reminder.");
     let posts = host.posts.borrow().clone();
     assert_eq!(posts.len(), 1);
-    assert!(posts[0].starts_with("Reminder: Game night (#1) starts in 1h 0m at Voice 1, Tue 25 Nov 2025, 20:00 UTC+02:00. 2 going: "), "{}", posts[0]);
-    assert!(posts[0].contains("everyone") && !posts[0].contains('@'), "{}", posts[0]);
+    let post = &posts[0];
+    assert!(post.starts_with("Reminder: Game night (#1) starts in 1h 0m at Voice 1, Tue 25 Nov 2025, 20:00 UTC+02:00. 2 going: {{mention:host-1}} {{mention:"), "{post}");
+    assert!(post.contains(&format!("{{{{mention:{bob}}}}}")) && !post.contains("carol"), "{post}");
+    assert!(!post.contains('@') && !post.contains("Bob") && !post.contains("Hana"), "names are the host's to write: {post}");
     assert_eq!(call(&host, "tick", &id, "bot", due + 1000)["output"], "Nothing to remind.");
     assert_eq!(host.posts.borrow().len(), 1);
+}
+
+#[test]
+fn a_reminder_mentions_at_most_eight_and_counts_the_rest() {
+    let host = FakeHost::default();
+    let id = plan(&host, "in 5h");
+    for i in 0..11 {
+        press(&host, &id, "Going", &format!("guest-{i:02}"), NOW);
+    }
+    call(&host, "tick", &id, "bot", stored(&host, &id).rem);
+    let post = host.posts.borrow()[0].clone();
+    assert_eq!(post.matches("{{mention:").count(), 8, "{post}");
+    assert!(post.contains("12 going:") && post.contains("and 4 more."), "{post}");
 }
 
 #[test]

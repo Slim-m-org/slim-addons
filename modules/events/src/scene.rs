@@ -72,9 +72,8 @@ pub fn event(e: &Event, id: &str, now_ms: i64, note: Option<&str>) -> String {
     }
     let Page { mut ops, mut y } = page;
     if open {
-        ops.push(json!({"op": "input", "x": 8.0, "y": y, "w": 84.0, "submit": "name", "placeholder": "your name in the list", "max": 14}));
-        ops.push(json!({"op": "input", "x": 8.0, "y": y + 13.0, "w": 84.0, "submit": "edit", "placeholder": "host: edit as title | when | where", "max": 200}));
-        y += 26.0;
+        ops.push(json!({"op": "input", "x": 8.0, "y": y, "w": 84.0, "submit": "edit", "placeholder": "host: edit as title | when | where", "max": 200}));
+        y += 13.0;
     }
     let controls: Vec<&str> = if open { vec!["Going", "Maybe", "Can't", CANCEL] } else { vec![] };
     let mut scene = json!({
@@ -156,9 +155,8 @@ mod tests {
     fn the_frame_lists_who_is_going_and_says_so_when_nobody_is() {
         let mut e = sample();
         assert!(texts(&parsed(&event(&e, "i", 0, None))).contains(&"nobody yet".to_owned()));
-        e.answer("alice", GOING).ok();
-        e.set_name("alice", "Alice");
-        e.answer("bob", NO).ok();
+        e.answer("alice", "Alice", GOING).ok();
+        e.answer("bob", "Bob", NO).ok();
         let scene = parsed(&event(&e, "i", 0, None));
         let shown = texts(&scene);
         assert!(shown.contains(&"Going (1)".to_owned()) && shown.contains(&"Alice".to_owned()) && shown.contains(&"Can't (1)".to_owned()));
@@ -168,9 +166,8 @@ mod tests {
     #[test]
     fn a_long_list_is_cut_with_and_more_instead_of_growing_forever() {
         let mut e = sample();
-        for i in 0..50 {
-            e.answer(&format!("caller-{i:04}"), GOING).ok();
-            e.set_name(&format!("caller-{i:04}"), &format!("Guest number {i}"));
+        for i in 0..crate::event::MAX_ANSWERS {
+            e.answer(&format!("caller-{i:04}"), &format!("Guest number {i}"), GOING).ok();
         }
         let shown = texts(&parsed(&event(&e, "i", 0, None)));
         assert!(shown.contains(&"and more".to_owned()));

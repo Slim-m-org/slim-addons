@@ -13,12 +13,14 @@ const MAX_TIMER_MS: i64 = 7 * 24 * 3_600_000;
 const MIN_TIMER_MS: i64 = 10_000;
 /// A timer is allowed to fire this much before its time without re-arming.
 const EARLY_SLACK_MS: i64 = 30_000;
-const REMINDER_NAMES: usize = 8;
+/// People a reminder mentions: under the host's cap of ten mentions in one message.
+const REMINDER_MENTIONS: usize = 8;
 
 pub struct Call<'a> {
     pub command: &'a str,
     pub input: &'a str,
     pub caller: &'a str,
+    pub name: &'a str,
     pub entropy: &'a str,
     pub now_ms: i64,
     pub channel: &'a str,
@@ -88,7 +90,7 @@ fn create(host: &dyn Host, call: &Call, text: &str) -> Outcome {
         Err(note) => return plain(scene::form(Some(&note))),
     };
     event.rem = event.remind_at(call.now_ms).unwrap_or(0);
-    event.answer(call.caller, GOING).ok();
+    event.answer(call.caller, call.name, GOING).ok();
     let id = new_id(call);
     let (id, event) = store::create(host, &id, event, call.now_ms)?;
     with_timer(scene::event(&event, &id, call.now_ms, None), &id, &event, call.now_ms)
@@ -130,19 +132,14 @@ fn act(host: &dyn Host, call: &Call, action: &Action) -> Outcome {
             event.x = true;
             timer_changed = true;
         }
-        other => {
-            if let Some(name) = other.strip_prefix("name:") {
-                if !event.set_name(call.caller, name) {
-                    return Err("answer Going, Maybe or Can't first, then set your name".to_owned());
-                }
-            } else if let Some(text) = other.strip_prefix("edit:") {
+        other => match other.strip_prefix("edit:") {
+            Some(text) => {
                 require_host(&event, call, "edit")?;
                 apply_edit(&mut event, text, now)?;
                 timer_changed = true;
-            } else {
-                return plain(scene::event(&event, id, now, None));
             }
-        }
+            None => return plain(scene::event(&event, id, now, None)),
+        },
     }
     store::save(host, id, &event)?;
     let frame = scene::event(&event, id, now, None);
@@ -164,7 +161,7 @@ fn answer(event: &mut Event, call: &Call, label: &str) -> Result<(), String> {
         "Maybe" => MAYBE,
         _ => NO,
     };
-    event.answer(call.caller, status).map_err(|_| "this event already has as many answers as it can keep".to_owned())
+    event.answer(call.caller, call.name, status).map_err(|_| "this event already has as many answers as it can keep".to_owned())
 }
 
 fn require_host(event: &Event, call: &Call, verb: &str) -> Result<(), String> {
@@ -280,13 +277,13 @@ fn tick(host: &dyn Host, call: &Call) -> Outcome {
 
 fn reminder_text(event: &Event, now_ms: i64) -> String {
     let place = if event.w.is_empty() { String::new() } else { format!(" at {}", event.w) };
-    let going = event.names(GOING);
+    let going = event.ids(GOING);
     let who = match going.len() {
         0 => "Nobody has said they are going yet.".to_owned(),
         n => {
-            let shown: Vec<String> = going.iter().take(REMINDER_NAMES).cloned().collect();
-            let more = if n > shown.len() { format!(" and {} more", n - shown.len()) } else { String::new() };
-            format!("{n} going: {}{more}.", shown.join(", "))
+            let mentions: Vec<String> = going.iter().take(REMINDER_MENTIONS).map(|id| format!("{{{{mention:{id}}}}}")).collect();
+            let more = if n > mentions.len() { format!(" and {} more", n - mentions.len()) } else { String::new() };
+            format!("{n} going: {}{more}.", mentions.join(" "))
         }
     };
     format!("Reminder: {} (#{}) {}{place}, {}. {who}", event.t, event.n, countdown(event.at - now_ms), format_local(event.at, event.z))

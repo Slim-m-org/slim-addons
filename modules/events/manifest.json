@@ -3,19 +3,19 @@
   "id": "events",
   "name": "Events",
   "version": "0.1.0",
-  "summary": "Post an event, collect Going, Maybe and Can't answers, and remind the channel before it starts.",
-  "description": "Plan an event from the apps menu, or type /event Game night | tomorrow 8pm | Voice 1 (title, start time, and an optional place such as a voice channel's name). The event is a shared card with a countdown, the start time shown in the zone you typed it in, Going, Maybe and Can't buttons and a live list of who answered what. Answering again moves your answer; a box on the card lets you put a name next to it, because the module knows people only by an opaque id. Times are read as UTC unless you add a zone: in 2h, tomorrow 8pm, or 2026-12-05 20:00 +02:00. The host (whoever planned it) can cancel or edit it from the card; anyone holding the Manage permission can list, cancel or edit events with /event-admin. About an hour before the start (ten minutes for an event planned less than 75 minutes ahead) the module posts a reminder with the title, the time and who is going. The reminder goes to the channel an admin chose for this module and it cannot mention people, as the module cannot know who they are. Events, with their answers, are kept in the module's own store (kv.store), up to 20 at a time and 50 answers each, and are forgotten a day after they start. The reminder uses a one-shot timer (schedule), posted with message.post; an admin approves each when installing and picks the channel. A daily timer only clears finished events.",
+  "summary": "Post an event, collect Going, Maybe and Can't answers, and remind the people who are going before it starts.",
+  "description": "Plan an event from the apps menu, or type /event Game night | tomorrow 8pm | Voice 1 (title, start time, and an optional place such as a voice channel's name). The event is a shared card with a countdown, the start time shown in the zone you typed it in, Going, Maybe and Can't buttons and a live list of who answered what, by the name other members see for them. Answering again moves your answer. Times are read as UTC unless you add a zone: in 2h, tomorrow 8pm, or 2026-12-05 20:00 +02:00. The host (whoever planned it) can cancel or edit it from the card; anyone holding the Manage permission can list, cancel or edit events with /event-admin. About an hour before the start (ten minutes for an event planned less than 75 minutes ahead) the module posts a reminder in the channel the event was planned in, with the title, the time and a mention of each member who is going (the first eight, and a count of the rest). Events, with their answers, are kept in the module's own store (kv.store), up to 20 at a time and 25 answers each, and are forgotten a day after they start. The reminder uses a one-shot timer (schedule), posted with message.post as the module's own account, which needs permission to send in that channel; an admin approves each when installing. A daily timer only clears finished events. It needs add-on API 7 for member names and mentions.",
   "changelog": [
     {
       "version": "0.1.0",
       "changes": [
-        "First release: events with Going, Maybe and Can't answers, a countdown, a list of who is going and a reminder before the start."
+        "First release: events with Going, Maybe and Can't answers, a countdown, a list of who is going by name, and a reminder in the event's channel that mentions the people going."
       ]
     }
   ],
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
-  "addon_api": 3,
+  "addon_api": 7,
   "runtime": {
     "backend": "wasm",
     "limits": {
@@ -27,7 +27,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/events/0.1.0/module.wasm",
-    "sha256": "080daf2f2c753899973c6fd557bc670a44528e7187590295372ee93b5f2e7d2f"
+    "sha256": "ff2ff45e2a8dc1a1a6aa2ed1ade8e36363b8d10ee454a3318d3717ef1263f181"
   },
   "permissions": [
     {

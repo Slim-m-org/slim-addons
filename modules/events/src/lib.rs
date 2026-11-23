@@ -36,6 +36,9 @@ struct Request {
 struct Caller {
     #[serde(default)]
     id: String,
+    /// The display name members see, sent by a host at add-on level 7 or newer.
+    #[serde(default)]
+    name: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -80,6 +83,7 @@ fn handle(host: &dyn host::Host, request: &[u8]) -> Vec<u8> {
         command: &parsed.command,
         input: &parsed.input,
         caller: &parsed.caller.id,
+        name: &parsed.caller.name,
         entropy: &parsed.entropy,
         now_ms: parsed.now_ms,
         channel: &parsed.context.channel_id,

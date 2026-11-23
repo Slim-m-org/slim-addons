@@ -7,14 +7,15 @@ pub const MAYBE: u8 = 1;
 pub const NO: u8 = 2;
 pub const STATUS_LABELS: [&str; 3] = ["Going", "Maybe", "Can't"];
 
-/// Answers kept per event, so one event always fits the 4 KiB a stored value may hold.
-pub const MAX_ANSWERS: usize = 50;
+/// Answers kept per event: each holds a full 64-character caller id, so 25 keep one event under 3 KiB and 20 events under the 64 KiB store.
+pub const MAX_ANSWERS: usize = 25;
 pub const MAX_TITLE: usize = 60;
 pub const MAX_WHERE: usize = 40;
-pub const MAX_NAME: usize = 14;
+pub const MAX_NAME: usize = 24;
+const MAX_ID: usize = 64;
 const MINUTE: i64 = 60_000;
 
-/// Who answered (the first 16 characters of their opaque id), what, and the name they gave.
+/// Who answered (their full caller id, which a reminder needs to mention them), what, and the name the host last gave for them.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Answer(pub String, pub u8, pub String);
 
@@ -57,9 +58,9 @@ pub fn clean(text: &str, max: usize) -> String {
     words.join(" ").chars().take(max).collect()
 }
 
-/// The stable short form of a caller id that an answer is kept under.
+/// The caller id an answer is kept under: the whole id, at most 64 characters.
 pub fn who(caller: &str) -> String {
-    caller.chars().take(16).collect()
+    caller.chars().take(MAX_ID).collect()
 }
 
 pub enum Refusal {
@@ -80,29 +81,22 @@ impl Event {
         self.rs.iter().find(|a| a.0 == key)
     }
 
-    pub fn answer(&mut self, caller: &str, status: u8) -> Result<(), Refusal> {
+    /// Records `status` for `caller`, and the `name` slim gave for them this time when there is one.
+    pub fn answer(&mut self, caller: &str, name: &str, status: u8) -> Result<(), Refusal> {
         let key = who(caller);
+        let name = clean(name, MAX_NAME);
         if let Some(existing) = self.rs.iter_mut().find(|a| a.0 == key) {
             existing.1 = status;
+            if !name.is_empty() {
+                existing.2 = name;
+            }
             return Ok(());
         }
         if self.rs.len() >= MAX_ANSWERS {
             return Err(Refusal::Full);
         }
-        self.rs.push(Answer(key, status, String::new()));
+        self.rs.push(Answer(key, status, name));
         Ok(())
-    }
-
-    /// Sets the name shown for `caller`; false when they have not answered yet.
-    pub fn set_name(&mut self, caller: &str, name: &str) -> bool {
-        let key = who(caller);
-        match self.rs.iter_mut().find(|a| a.0 == key) {
-            Some(existing) => {
-                existing.2 = clean(name, MAX_NAME);
-                true
-            }
-            None => false,
-        }
     }
 
     pub fn counts(&self) -> [usize; 3] {
@@ -116,6 +110,11 @@ impl Event {
     /// The names of everyone who gave `status`, oldest answer first.
     pub fn names(&self, status: u8) -> Vec<String> {
         self.rs.iter().filter(|a| a.1 == status).map(label).collect()
+    }
+
+    /// The caller ids of everyone who gave `status`, oldest answer first.
+    pub fn ids(&self, status: u8) -> Vec<&str> {
+        self.rs.iter().filter(|a| a.1 == status).map(|a| a.0.as_str()).collect()
     }
 
     /// When to remind: an hour ahead, or ten minutes ahead for an event that is soon; `None` when it is too close to bother.
@@ -144,7 +143,7 @@ mod tests {
     #[test]
     fn answering_again_moves_the_answer_instead_of_adding_one() {
         let mut e = sample();
-        assert!(e.answer("alice", GOING).is_ok() && e.answer("bob", MAYBE).is_ok() && e.answer("alice", NO).is_ok());
+        assert!(e.answer("alice", "", GOING).is_ok() && e.answer("bob", "", MAYBE).is_ok() && e.answer("alice", "", NO).is_ok());
         assert_eq!(e.counts(), [0, 1, 1]);
         assert_eq!(e.answer_of("alice").map(|a| a.1), Some(NO));
     }
@@ -153,41 +152,55 @@ mod tests {
     fn the_answer_list_stops_at_its_limit_but_still_lets_people_change_theirs() {
         let mut e = sample();
         for i in 0..MAX_ANSWERS {
-            assert!(e.answer(&format!("caller-{i:04}"), GOING).is_ok());
+            assert!(e.answer(&format!("caller-{i:04}"), "", GOING).is_ok());
         }
-        assert!(e.answer("one-too-many", GOING).is_err());
-        assert!(e.answer("caller-0007", NO).is_ok());
+        assert!(e.answer("one-too-many", "", GOING).is_err());
+        assert!(e.answer("caller-0007", "", NO).is_ok());
         assert_eq!(e.counts(), [MAX_ANSWERS - 1, 0, 1]);
     }
 
     #[test]
-    fn a_full_event_with_the_longest_text_still_fits_one_kv_value() {
+    fn a_full_event_with_the_longest_text_still_fits_one_kv_value_and_twenty_fit_the_store() {
         let mut e = sample();
         e.t = "t".repeat(MAX_TITLE);
         e.w = "w".repeat(MAX_WHERE);
+        e.by = who(&"f".repeat(64));
         e.ch = "0190a3c2-7e11-7aaa-b0f0-123456789abc".into();
         e.x = true;
         e.r = true;
         e.rem = 1_796_493_600_000;
         for i in 0..MAX_ANSWERS {
             let caller = format!("{i:016x}ffffffffffffffffffffffffffffffffffffffffffffffff");
-            e.answer(&caller, GOING).ok();
-            e.set_name(&caller, &"n".repeat(MAX_NAME));
+            e.answer(&caller, &"n".repeat(MAX_NAME), GOING).ok();
         }
-        assert!(serde_json::to_string(&e).unwrap().len() < 4096 - 256);
+        let size = serde_json::to_string(&e).unwrap().len();
+        assert!(size < 4096 - 256, "{size}");
+        assert!(20 * size < 64 * 1024, "{size}");
     }
 
     #[test]
-    fn names_are_plain_text_with_no_mentions_or_markup() {
+    fn names_are_plain_text_with_no_mentions_or_markup_and_the_latest_one_wins() {
         assert_eq!(clean("  @everyone  <@123> `x`\n", 40), "everyone 123 x");
         assert_eq!(clean(&"a".repeat(100), 14).len(), 14);
         let mut e = sample();
-        e.answer("alice", GOING).ok();
-        assert!(!e.set_name("nobody", "x"));
-        e.set_name("alice", "@here");
+        e.answer("alice-id", "@here", GOING).ok();
         assert_eq!(e.names(GOING), ["here"]);
-        e.set_name("alice", "");
-        assert_eq!(e.names(GOING), ["member alic"]);
+        e.answer("alice-id", "Alice", MAYBE).ok();
+        assert_eq!(e.names(MAYBE), ["Alice"]);
+        e.answer("alice-id", "", GOING).ok();
+        assert_eq!(e.names(GOING), ["Alice"], "no name this time keeps the last one");
+        e.answer("bob-id", "", GOING).ok();
+        assert_eq!(e.names(GOING), ["Alice", "member bob-"]);
+    }
+
+    #[test]
+    fn the_ids_of_those_going_are_whole_caller_ids() {
+        let mut e = sample();
+        let id = "a".repeat(64);
+        e.answer(&id, "Ann", GOING).ok();
+        e.answer("b", "Bo", MAYBE).ok();
+        assert_eq!(e.ids(GOING), [id.as_str()]);
+        assert_eq!(who(&"c".repeat(80)).len(), 64);
     }
 
     #[test]
