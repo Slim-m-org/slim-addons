@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "id": "pelican",
+  "name": "Pelican",
+  "version": "1.0.0",
+  "summary": "Lists and controls game servers on a Pelican panel, and keeps a status message up to date.",
+  "author": "slim-m",
+  "provider": "connector",
+  "addon_api": 7,
+  "connector": {"permissions": ["view_channel", "send_messages"]},
+  "permissions": [
+    {"key": "view", "name": "See game servers", "description": "Lists the game servers and their state."}
+  ],
+  "extension_points": [
+    {"kind": "command", "name": "servers", "permission": "view", "description": "Lists game servers with state, CPU and RAM."},
+    {"kind": "slash-command", "name": "servers", "permission": "view", "command": "servers", "description": "List game servers"},
+    {"kind": "command", "name": "server-panel", "permission": "view", "description": "Draws the Game servers panel."},
+    {"kind": "panel", "name": "Game servers", "permission": "view", "command": "server-panel", "description": "Game servers and their state, beside the chat."}
+  ],
+  "settings": [
+    {"key": "pelican_url", "type": "string", "label": "Panel address", "help": "The panel's https address."},
+    {"key": "pelican_api_key", "type": "secret", "label": "API key", "help": "A Client API key (ptlc_...)."},
+    {"key": "pelican_allow_http", "type": "bool", "label": "Allow http", "help": "Only for a panel on your own network.", "default": false},
+    {"key": "pelican_servers", "type": "string", "label": "Servers", "help": "Names or identifiers to show, separated by commas. Empty shows all."},
+    {"key": "pelican_control_role", "type": "string", "label": "Control role", "help": "Role id whose members may start and stop servers."},
+    {"key": "pelican_log_channel", "type": "string", "label": "Log channel", "help": "Channel id for the power-action log. Power commands are off without it."},
+    {"key": "pelican_status_channel", "type": "string", "label": "Status channel", "help": "Channel id for the status message. Empty means none."},
+    {"key": "pelican_status_interval", "type": "int", "label": "Status refresh", "help": "Seconds between refreshes.", "default": 60, "min": 30, "max": 3600}
+  ]
+}

@@ -117,6 +117,17 @@ class RealTableTest(unittest.TestCase):
         tags = {key for key in commands.SAMPLES if key[0] == "tags" and commands.SAMPLES[key][1] == ""}
         self.assertEqual(tags, set(commands.POSTS))
 
+    def test_a_connector_has_no_wasm_so_it_is_skipped_not_a_missing_sample(self):
+        repo = pathlib.Path(__file__).resolve().parent.parent
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "modules" / "pelican").mkdir(parents=True)
+            (root / "scripts").mkdir()
+            (root / "modules" / "pelican" / "manifest.json").write_text((repo / "modules" / "pelican" / "manifest.json").read_text())
+            (root / "scripts" / "check-scene-ops.py").write_text((here / "check-scene-ops.py").read_text())
+            with mock.patch.object(commands, "root", root):
+                self.assertEqual(commands.main("no-such-runner"), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

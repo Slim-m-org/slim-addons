@@ -60,7 +60,11 @@ def source_changed_without_new_version(base, mid, version):
 
 base = sys.argv[sys.argv.index("--base") + 1] if "--base" in sys.argv else None
 allow = read_allowlist((root / allow_file).read_text())
-modules = sorted(p.parent.name for p in (root / "modules").glob("*/manifest.json") if p.parent.name != "_template")
+# A connector is an external program, so there is no wasm to rebuild.
+modules = sorted(
+    p.parent.name for p in (root / "modules").glob("*/manifest.json")
+    if p.parent.name != "_template" and json.loads(p.read_text()).get("provider") != "connector"
+)
 
 for ghost in sorted(allow - set(modules)):
     fail(ghost, f"is in {allow_file} but is not a module")

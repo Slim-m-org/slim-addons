@@ -149,6 +149,8 @@ def main(runner):
         if manifest.parent.name == "_template":
             continue
         m = json.loads(manifest.read_text())
+        if m.get("provider") == "connector":
+            continue
         apps = {e["command"] for e in m["extension_points"] if e["kind"] == "app"}
         wasm = str(root / m["artifact"]["path"])
         for command in sorted({e["name"] for e in m["extension_points"] if e["kind"] == "command"} - apps):

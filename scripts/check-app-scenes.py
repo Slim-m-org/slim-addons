@@ -74,6 +74,8 @@ def main():
         if manifest.parent.name == "_template":
             continue
         m = json.loads(manifest.read_text())
+        if m.get("provider") == "connector":
+            continue
         for command in sorted({e["command"] for e in m["extension_points"] if e["kind"] in ("app", "canvas-tile")}):
             wasm = str(root / m["artifact"]["path"])
             problems, count = check_app(scene_ops, runner, wasm, command)
