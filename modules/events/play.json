@@ -1,0 +1,233 @@
+{
+ "command": "event",
+ "scenarios": [
+  {
+   "name": "launch is a form with the input",
+   "now_ms": 1700000000000,
+   "steps": [
+    {
+     "as": "a1",
+     "expect": {
+      "status_has": "title | when",
+      "input": true,
+      "controls": []
+     }
+    }
+   ]
+  },
+  {
+   "name": "planning shows the countdown and the answers, and the host is going",
+   "now_ms": 1700000000000,
+   "steps": [
+    {
+     "as": "a1",
+     "do": "plan:Game night | in 3h | Voice 1",
+     "expect": {
+      "status": "1 going, 0 maybe, 0 can't",
+      "controls": [
+       "Going",
+       "Maybe",
+       "Can't",
+       "cancel event"
+      ],
+      "input": true,
+      "live": false,
+      "text_has": [
+       "Game night",
+       "starts in 3h 0m",
+       "at Voice 1",
+       "Going (1)",
+       "UTC"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "answers move, and names show in the list",
+   "now_ms": 1700000000000,
+   "steps": [
+    {
+     "as": "a1",
+     "do": "plan:Game night | in 3h"
+    },
+    {
+     "as": "b2",
+     "do": "Going",
+     "expect": {
+      "status": "2 going, 0 maybe, 0 can't",
+      "text_has": [
+       "Going (2)"
+      ]
+     }
+    },
+    {
+     "as": "c3",
+     "do": "Maybe",
+     "expect": {
+      "status": "2 going, 1 maybe, 0 can't",
+      "text_has": [
+       "Maybe (1)"
+      ]
+     }
+    },
+    {
+     "as": "b2",
+     "do": "Can't",
+     "expect": {
+      "status": "1 going, 1 maybe, 1 can't"
+     }
+    },
+    {
+     "as": "b2",
+     "do": "name:Bea",
+     "expect": {
+      "text_has": [
+       "Bea"
+      ]
+     }
+    },
+    {
+     "as": "d4",
+     "do": "name:Dee",
+     "expect": {
+      "ok": false,
+      "error_has": "answer Going"
+     }
+    }
+   ]
+  },
+  {
+   "name": "only the host cancels",
+   "now_ms": 1700000000000,
+   "steps": [
+    {
+     "as": "a1",
+     "do": "plan:Game night | in 3h"
+    },
+    {
+     "as": "b2",
+     "do": "cancel event",
+     "expect": {
+      "ok": false,
+      "error_has": "only the host"
+     }
+    },
+    {
+     "as": "a1",
+     "do": "cancel event",
+     "expect": {
+      "status": "1 going, 0 maybe, 0 can't",
+      "controls": [],
+      "input": false,
+      "text_has": [
+       "cancelled"
+      ]
+     }
+    },
+    {
+     "as": "b2",
+     "do": "Going",
+     "expect": {
+      "ok": false,
+      "error_has": "cancelled"
+     }
+    }
+   ]
+  },
+  {
+   "name": "the host edits the title and time; others cannot",
+   "now_ms": 1700000000000,
+   "steps": [
+    {
+     "as": "a1",
+     "do": "plan:Game night | in 3h"
+    },
+    {
+     "as": "b2",
+     "do": "edit:Hijack",
+     "expect": {
+      "ok": false,
+      "error_has": "only the host"
+     }
+    },
+    {
+     "as": "a1",
+     "do": "edit:Board games | in 5h |",
+     "expect": {
+      "text_has": [
+       "Board games",
+       "starts in 5h 0m"
+      ]
+     }
+    },
+    {
+     "as": "a1",
+     "do": "edit: | whenever",
+     "expect": {
+      "ok": false,
+      "error_has": "when:"
+     }
+    }
+   ]
+  },
+  {
+   "name": "answers close when the event starts",
+   "now_ms": 1700000000000,
+   "steps": [
+    {
+     "as": "a1",
+     "do": "plan:Game night | in 3h"
+    },
+    {
+     "as": "b2",
+     "do": "Going",
+     "now_ms": 1700010800000,
+     "expect": {
+      "ok": false,
+      "error_has": "has started"
+     }
+    },
+    {
+     "as": "b2",
+     "do": "refresh",
+     "now_ms": 1700011100000,
+     "expect": {
+      "controls": [],
+      "text_has": [
+       "started 5m ago"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "a bad plan shows the form again and the sweep finds nothing to clear",
+   "now_ms": 1700000000000,
+   "steps": [
+    {
+     "as": "a1",
+     "do": "plan:Game night | someday",
+     "expect": {
+      "status_has": "when:",
+      "input": true
+     }
+    },
+    {
+     "as": "a1",
+     "do": "plan:Game night | in 3h | Voice 1 | extra",
+     "expect": {
+      "status_has": "title | when"
+     }
+    },
+    {
+     "tick": "tick",
+     "as": "scheduled",
+     "expect": {
+      "output_has": "Removed 0 finished events."
+     }
+    }
+   ]
+  }
+ ]
+}

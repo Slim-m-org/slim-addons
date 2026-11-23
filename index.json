@@ -180,6 +180,12 @@
       "name": "Noughts and crosses",
       "version": "0.2.0",
       "summary": "Noughts and crosses for a call, kept in step for everyone in it."
+    },
+    {
+      "id": "events",
+      "name": "Events",
+      "version": "0.1.0",
+      "summary": "Post an event, collect Going, Maybe and Can't answers, and remind the channel before it starts."
     }
   ]
 }

@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "id": "events",
+  "name": "Events",
+  "version": "0.1.0",
+  "summary": "Post an event, collect Going, Maybe and Can't answers, and remind the channel before it starts.",
+  "description": "Plan an event from the apps menu, or type /event Game night | tomorrow 8pm | Voice 1 (title, start time, and an optional place such as a voice channel's name). The event is a shared card with a countdown, the start time shown in the zone you typed it in, Going, Maybe and Can't buttons and a live list of who answered what. Answering again moves your answer; a box on the card lets you put a name next to it, because the module knows people only by an opaque id. Times are read as UTC unless you add a zone: in 2h, tomorrow 8pm, or 2026-12-05 20:00 +02:00. The host (whoever planned it) can cancel or edit it from the card; anyone holding the Manage permission can list, cancel or edit events with /event-admin. About an hour before the start (ten minutes for an event planned less than 75 minutes ahead) the module posts a reminder with the title, the time and who is going. The reminder goes to the channel an admin chose for this module and it cannot mention people, as the module cannot know who they are. Events, with their answers, are kept in the module's own store (kv.store), up to 20 at a time and 50 answers each, and are forgotten a day after they start. The reminder uses a one-shot timer (schedule), posted with message.post; an admin approves each when installing and picks the channel. A daily timer only clears finished events.",
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "changes": [
+        "First release: events with Going, Maybe and Can't answers, a countdown, a list of who is going and a reminder before the start."
+      ]
+    }
+  ],
+  "author": "slim-m",
+  "homepage": "https://github.com/Slim-m-org/slim-addons",
+  "addon_api": 3,
+  "runtime": {
+    "backend": "wasm",
+    "limits": {
+      "memory_mb": 16,
+      "wall_ms": 1000,
+      "fuel": 50000000
+    }
+  },
+  "artifact": {
+    "kind": "wasm",
+    "path": "modules/events/0.1.0/module.wasm",
+    "sha256": "080daf2f2c753899973c6fd557bc670a44528e7187590295372ee93b5f2e7d2f"
+  },
+  "permissions": [
+    {
+      "key": "events",
+      "name": "Use events",
+      "description": "Plan events, and answer Going, Maybe or Can't to them, in this space."
+    },
+    {
+      "key": "manage",
+      "name": "Manage events",
+      "description": "List, cancel and edit any event, and clear the finished ones by hand."
+    }
+  ],
+  "capabilities": [
+    "command.register",
+    "kv.store",
+    "message.post",
+    "schedule"
+  ],
+  "schedules": [
+    {
+      "command": "tick",
+      "every_minutes": 1440
+    }
+  ],
+  "extension_points": [
+    {
+      "kind": "command",
+      "name": "event",
+      "permission": "events",
+      "description": "Plan an event, or answer one."
+    },
+    {
+      "kind": "slash-command",
+      "name": "event",
+      "permission": "events",
+      "command": "event",
+      "description": "Plan an event: /event Game night | tomorrow 8pm | Voice 1"
+    },
+    {
+      "kind": "app",
+      "name": "Events",
+      "permission": "events",
+      "command": "event",
+      "description": "Plan an event in the channel and collect who is coming."
+    },
+    {
+      "kind": "command",
+      "name": "event-admin",
+      "permission": "manage",
+      "description": "List, cancel or edit events."
+    },
+    {
+      "kind": "slash-command",
+      "name": "event-admin",
+      "permission": "manage",
+      "command": "event-admin",
+      "description": "List events, or /event-admin cancel 3"
+    },
+    {
+      "kind": "command",
+      "name": "tick",
+      "permission": "manage",
+      "description": "Send the reminders that are due and clear finished events."
+    }
+  ]
+}
