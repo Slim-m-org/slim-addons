@@ -12,6 +12,8 @@ slim-m's `docs/decisions/0021-modules-and-the-dock.md`.
 - `modules/<id>/manifest.json` - one module's contract (permissions it adds, host
   capabilities it asks for, runtime backend it needs, and its artifact + sha256).
 - `modules/<id>/<version>/module.wasm` - the built module artifact, pinned by version.
+- A connector (`"provider": "connector"`, `"addon_api": 7`) has a manifest and a README but no artifact: its logic is a bot that lives in another repo and is run by the admin, or by an operator's connector supervisor.
+  `scripts/connector-sources.json` names the file each connector's manifest is copied from, and `scripts/check-connector-sources.py` fails when the copy drifts from it.
 
 Nothing here runs until an admin installs it into a space, and then only with the
 permissions and capabilities the admin approves.
@@ -152,6 +154,7 @@ Right after the `cargo test` loop, `python3 -m unittest discover -s scripts -p '
 Each module keeps its logic in plain Rust with unit tests, so `cd modules/<id> && cargo test` runs them with no wasm involved.
 
 `python3 scripts/check-catalogue.py` confirms every module has an `index.json` row that matches its manifest, that each pinned wasm still hashes to its `sha256`, and that every extension point names a permission and command the manifest declares.
+A connector has no wasm, so it is checked for what a connector may declare instead (level 7, no artifact or sandbox sections, only command, slash-command and panel points, a digest-pinned host-run image, a README), and the wasm build, scene, command and play checks skip it.
 With `--base origin/main` it also fails if a wasm that main already published was changed, or a manifest was edited without bumping its version.
 Release notes are the one exception: `changelog` in a manifest lists what each version changed, newest first (`[{"version": "0.1.1", "changes": ["..."]}]`), and can be edited without a version bump because slim-m reads it fresh to show on its Modules screen.
 The checker requires the newest entry to be the manifest's own version and holds each entry to the server's limits: at most 20 entries of 20 lines, each line 1 to 300 characters with no hidden characters.

@@ -72,3 +72,12 @@ jobs:
         run: python3 scripts/check-command-modules.py target/release/run-module
       - name: Play every game through its script
         run: python3 scripts/play-modules.py target/release/run-module
+
+  connector-sources:
+    # Reads each connector's source manifest from its repo's main, so it needs the network and a merged source.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check each connector's manifest still says what its source says
+        run: python3 scripts/check-connector-sources.py

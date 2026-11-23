@@ -180,6 +180,12 @@
       "name": "Noughts and crosses",
       "version": "0.2.0",
       "summary": "Noughts and crosses for a call, kept in step for everyone in it."
+    },
+    {
+      "id": "pelican",
+      "name": "Pelican",
+      "version": "1.0.0",
+      "summary": "Lists and controls game servers on a Pelican panel, and keeps a status message up to date."
     }
   ]
 }

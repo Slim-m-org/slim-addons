@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks index.json against each module's manifest and pinned wasm.
+"""Checks index.json against each module's manifest and pinned wasm, or, for a connector, what it may declare.
 
 Run from the repo root: python3 scripts/check-catalogue.py [--base REF]
 
@@ -43,6 +43,44 @@ def check_changelog(mid, m):
                 fail(mid, f"changelog {version} has a line that is empty, over 300 characters, or holds hidden characters")
 
 
+CONNECTOR_API = 7
+# What a connector may not declare: a sandbox the host runs, or one the host starts on its own (slim-m connectors.md).
+CONNECTOR_REFUSED = ("artifact", "runtime", "capabilities", "network", "schedules", "subscriptions", "interceptors", "permission_hooks", "data", "call_audio", "slots")
+CONNECTOR_POINTS = ("command", "slash-command", "panel")
+PINNED_IMAGE = re.compile(r"[a-z0-9][a-z0-9./_-]*@sha256:[0-9a-f]{64}")
+PERMISSION_NAME = re.compile(r"[a-z][a-z_]*")
+
+
+def is_connector(m):
+    return m.get("provider") == "connector"
+
+
+def check_connector(mid, m):
+    """A connector has no wasm to pin, so what it may and may not declare is the whole check; the server has the last word."""
+    if not isinstance(m.get("addon_api"), int) or m["addon_api"] < CONNECTOR_API:
+        fail(mid, f"a connector needs \"addon_api\": {CONNECTOR_API} or higher, or an older server installs it as a module with no artifact")
+    for key in CONNECTOR_REFUSED:
+        if key in m:
+            fail(mid, f"a connector declares no {key}; the server refuses the manifest")
+    for e in m.get("extension_points", []):
+        if e["kind"] not in CONNECTOR_POINTS:
+            fail(mid, f"extension point {e['name']} is a {e['kind']}, which a connector cannot declare")
+    for s in m.get("settings", []):
+        if s.get("type") == "secret" and "hosts" in s:
+            fail(mid, f"secret setting {s['key']} takes no hosts, since the host sends a connector the value itself")
+    connector = m.get("connector")
+    if not isinstance(connector, dict) or set(connector) - {"permissions", "host_run"}:
+        return fail(mid, "connector must be an object with permissions and, optionally, host_run")
+    names = connector.get("permissions")
+    if not isinstance(names, list) or not names or not all(isinstance(n, str) and PERMISSION_NAME.fullmatch(n) for n in names) or len(set(names)) != len(names):
+        fail(mid, "connector.permissions must list each core permission once, by its snake_case name")
+    image = (connector.get("host_run") or {}).get("image")
+    if "host_run" in connector and not (isinstance(image, str) and PINNED_IMAGE.fullmatch(image)):
+        fail(mid, "connector.host_run.image must be <registry>/<path>@sha256:<64 hex>, never a tag")
+    if not (root / "modules" / mid / "README.md").is_file():
+        fail(mid, "has no README.md; an admin reads it before approving what the connector asks for")
+
+
 def without_changelog(manifest):
     return {k: v for k, v in manifest.items() if k != "changelog"}
 
@@ -70,14 +108,19 @@ for mid in sorted(on_disk & listed.keys()):
         fail(mid, f"index.json ref {ref!r} is not a commit sha or a tag name")
     if m["id"] != mid:
         fail(mid, "manifest id does not match its directory")
-    wasm = root / m["artifact"]["path"]
-    expected_path = f"modules/{mid}/{m['version']}/module.wasm"
-    if m["artifact"]["path"] != expected_path:
-        fail(mid, f"artifact path {m['artifact']['path']} is not {expected_path}, so version {m['version']} would ship another version's wasm")
-    if not wasm.is_file():
-        fail(mid, f"artifact {m['artifact']['path']} is missing")
-    elif hashlib.sha256(wasm.read_bytes()).hexdigest() != m["artifact"]["sha256"]:
-        fail(mid, "artifact sha256 does not match the pinned value")
+    if is_connector(m):
+        check_connector(mid, m)
+    elif "artifact" not in m:
+        fail(mid, "has no artifact; only a \"provider\": \"connector\" manifest may leave it out")
+    else:
+        wasm = root / m["artifact"]["path"]
+        expected_path = f"modules/{mid}/{m['version']}/module.wasm"
+        if m["artifact"]["path"] != expected_path:
+            fail(mid, f"artifact path {m['artifact']['path']} is not {expected_path}, so version {m['version']} would ship another version's wasm")
+        if not wasm.is_file():
+            fail(mid, f"artifact {m['artifact']['path']} is missing")
+        elif hashlib.sha256(wasm.read_bytes()).hexdigest() != m["artifact"]["sha256"]:
+            fail(mid, "artifact sha256 does not match the pinned value")
     keys = {p["key"] for p in m.get("permissions", [])}
     names = {e["name"] for e in m["extension_points"] if e["kind"] == "command"}
     for e in m["extension_points"]:

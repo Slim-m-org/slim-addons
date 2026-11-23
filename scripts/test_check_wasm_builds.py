@@ -64,6 +64,18 @@ class WasmBuildsTest(Registry):
         done = self.check()
         self.assertEqual(done.returncode, 0, done.stderr)
 
+    def test_a_connector_has_no_wasm_and_no_lockfile_to_check(self):
+        self.repo.write("modules/c/manifest.json", json.dumps({"id": "c", "version": "1.0.0", "provider": "connector"}))
+        done = self.check()
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_a_connector_cannot_sit_in_the_unreproduced_list(self):
+        self.repo.write("modules/c/manifest.json", json.dumps({"id": "c", "version": "1.0.0", "provider": "connector"}))
+        self.allow(["c"])
+        done = self.check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("c: is in scripts/wasm-unreproduced.txt but is not a module", done.stderr)
+
     def test_a_rebuild_that_differs_from_the_pin_is_refused(self):
         self.module("m", built=b"new bytes", pinned=b"old bytes")
         done = self.check()

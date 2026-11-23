@@ -34,6 +34,8 @@ class CatalogueTest(unittest.TestCase):
             for version in source.parent.iterdir():
                 if version.is_dir() and version.name[0].isdigit():
                     (target / version.name).symlink_to(version)
+            if (source.parent / "README.md").is_file():
+                shutil.copy(source.parent / "README.md", target)
 
     def run_check(self):
         return subprocess.run([sys.executable, str(self.tmp / "scripts" / "check-catalogue.py")], capture_output=True, text=True)
@@ -123,6 +125,59 @@ class CatalogueTest(unittest.TestCase):
         done = self.run_check()
         self.assertEqual(done.returncode, 1)
         self.assertIn("hidden characters", done.stderr)
+
+
+    # A connector has no wasm to pin, so it is held to what a connector may declare instead.
+    def refused(self, change, message):
+        self.edit_manifest("pelican", change)
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertIn(message, done.stderr)
+
+    def test_a_published_connector_needs_no_artifact(self):
+        manifest = json.loads((self.tmp / "modules" / "pelican" / "manifest.json").read_text())
+        self.assertNotIn("artifact", manifest)
+        self.assertEqual(self.run_check().returncode, 0)
+
+    def test_a_connector_below_level_seven_is_refused(self):
+        self.refused(lambda m: m.update(addon_api=6), "needs \"addon_api\": 7")
+
+    def test_a_connector_that_declares_a_sandbox_is_refused(self):
+        self.refused(lambda m: m.update(artifact={"path": "x", "sha256": "0" * 64}), "declares no artifact")
+        self.refused(lambda m: m.update(capabilities=["net.fetch"]), "declares no capabilities")
+
+    def test_a_connector_extension_point_must_be_one_it_may_declare(self):
+        self.refused(lambda m: m["extension_points"].append({"kind": "app", "name": "A", "permission": "view", "command": "servers"}), "which a connector cannot declare")
+
+    def test_a_connector_still_needs_declared_permissions_and_commands(self):
+        self.refused(lambda m: m["extension_points"].append({"kind": "panel", "name": "P", "permission": "nope", "command": "servers"}), "uses an undeclared permission")
+        self.refused(lambda m: m["extension_points"].append({"kind": "slash-command", "name": "x", "permission": "view", "command": "nope"}), "runs an undeclared command")
+
+    def test_connector_permissions_must_be_named_once_each(self):
+        self.refused(lambda m: m["connector"].update(permissions=[]), "connector.permissions")
+        self.refused(lambda m: m["connector"].update(permissions=["view_channel", "view_channel"]), "connector.permissions")
+        self.refused(lambda m: m["connector"].update(permissions=["VIEW"]), "connector.permissions")
+
+    def test_a_host_run_image_must_be_pinned_by_digest(self):
+        self.refused(lambda m: m["connector"].update(host_run={"image": "ghcr.io/slim-m-org/pelican:latest"}), "never a tag")
+        self.edit_manifest("pelican", lambda m: m["connector"].update(host_run={"image": "ghcr.io/slim-m-org/pelican@sha256:" + "a" * 64}))
+        self.assertEqual(self.run_check().returncode, 0)
+
+    def test_a_secret_setting_takes_no_hosts(self):
+        self.refused(lambda m: m["settings"][1].update(hosts=["panel.example"]), "takes no hosts")
+
+    def test_a_connector_without_a_readme_is_refused(self):
+        (self.tmp / "modules" / "pelican" / "README.md").unlink()
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("has no README.md", done.stderr)
+
+    def test_a_wasm_module_without_an_artifact_is_reported_not_a_crash(self):
+        self.edit_manifest("table", lambda m: m.pop("artifact"))
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("has no artifact", done.stderr)
+        self.assertNotIn("Traceback", done.stderr)
 
 
 def sha256(data):
