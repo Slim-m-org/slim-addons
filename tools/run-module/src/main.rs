@@ -42,7 +42,8 @@
 //! own principal, with no one typing it.
 //!
 //! `--caller` puts `{"caller":{"id":...}}` in the request, which is how a
-//! seat-based module learns who is acting. `--fuel` meters the run and fails it
+//! seat-based module learns who is acting, and `--caller-name` adds the
+//! `name` a level 7 host sends beside it. `--fuel` meters the run and fails it
 //! with `out of fuel` when the budget is spent, the way slim refuses a module
 //! over `runtime.limits.fuel`, and prints the fuel the run used to stderr;
 //! without it the run is unmetered.
@@ -131,7 +132,7 @@ fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
     let now_ms = options.now_ms.unwrap_or_else(clock_ms);
     let (command, input) = run_input(options, manifest.as_ref(), now_ms)?;
     let given = settings::resolve(manifest.as_ref(), &options.settings)?;
-    let request = serde_request(&command, &input, options.caller.as_deref(), (now_ms, given));
+    let request = serde_request(&command, &input, caller_of(options), (now_ms, given));
     let reply = call_run(&mut store, &instance, request.as_bytes())?;
     if let Some(fuel) = options.fuel {
         eprintln!("fuel used: {}", fuel.saturating_sub(store.get_fuel().unwrap_or(fuel)));
@@ -215,14 +216,21 @@ fn clock_ms() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
-/// The request shape slim sends: `{"command":..., "input":..., "caller":{"id":...}, "entropy":..., "now_ms":..., "settings":{...}}`.
+fn caller_of(options: &Options) -> Option<(&str, Option<&str>)> {
+    Some((options.caller.as_deref()?, options.caller_name.as_deref()))
+}
+
+/// The request shape slim sends: `{"command":..., "input":..., "caller":{"id":..., "name":...}, "entropy":..., "now_ms":..., "settings":{...}}`.
 ///
 /// slim gives every run a fresh `entropy`; set `RUN_MODULE_ENTROPY` to send one,
 /// and leave it unset to send none, as a host older than the field would.
-fn serde_request(command: &str, input: &str, caller: Option<&str>, (now_ms, settings): (i64, Option<Value>)) -> String {
+fn serde_request(command: &str, input: &str, caller: Option<(&str, Option<&str>)>, (now_ms, settings): (i64, Option<Value>)) -> String {
     let mut request = json!({"command": command, "input": input, "now_ms": now_ms});
-    if let Some(id) = caller {
+    if let Some((id, name)) = caller {
         request["caller"] = json!({"id": id});
+        if let Some(name) = name {
+            request["caller"]["name"] = json!(name);
+        }
     }
     if let Ok(entropy) = std::env::var("RUN_MODULE_ENTROPY") {
         request["entropy"] = json!(entropy);
@@ -318,10 +326,16 @@ mod tests {
 
     #[test]
     fn a_caller_and_settings_are_put_in_the_request() {
-        let request: Value = serde_json::from_str(&serde_request("play", "", Some("al\"ice"), (7, Some(json!({"rate": 5}))))).unwrap();
+        let request: Value = serde_json::from_str(&serde_request("play", "", Some(("al\"ice", None)), (7, Some(json!({"rate": 5}))))).unwrap();
         assert_eq!(request, json!({"command": "play", "input": "", "caller": {"id": "al\"ice"}, "now_ms": 7, "settings": {"rate": 5}}));
         let bare = serde_request("play", "", None, (7, None));
         assert!(!bare.contains("caller") && !bare.contains("settings"));
+    }
+
+    #[test]
+    fn a_caller_name_rides_beside_the_id() {
+        let request: Value = serde_json::from_str(&serde_request("play", "", Some(("u1", Some("Ada"))), (7, None))).unwrap();
+        assert_eq!(request["caller"], json!({"id": "u1", "name": "Ada"}));
     }
 
     #[test]

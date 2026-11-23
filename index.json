@@ -182,6 +182,12 @@
       "summary": "Noughts and crosses for a call, kept in step for everyone in it."
     },
     {
+      "id": "events",
+      "name": "Events",
+      "version": "0.1.0",
+      "summary": "Post an event, collect Going, Maybe and Can't answers, and remind the people who are going before it starts."
+    },
+    {
       "id": "pelican",
       "name": "Pelican",
       "version": "1.0.0",

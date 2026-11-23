@@ -148,6 +148,22 @@ class TypoTest(unittest.TestCase):
         self.assertTrue(problems([{"as": "a1", "do": "go", "expct": {}}]))
 
 
+class CallerNameTest(unittest.TestCase):
+    """A script's `names` become the runner's --caller-name, for the callers it lists only."""
+
+    def argv_for(self, caller, names):
+        manifest = {"runtime": {"limits": {"fuel": 9}}}
+        done = mock.Mock(returncode=0, stdout='{"ok": true}', stderr="")
+        with mock.patch.object(play.subprocess, "run", return_value=done) as run:
+            play.runner_for("runner", "m.wasm", manifest, "/tmp/x", {"names": names})(caller, "", 1, "event")
+        return run.call_args.args[0]
+
+    def test_a_named_caller_is_sent_its_name_and_others_none(self):
+        argv = self.argv_for("a1", {"a1": "Ada"})
+        self.assertEqual(argv[argv.index("--caller-name") + 1], "Ada")
+        self.assertNotIn("--caller-name", self.argv_for("b2", {"a1": "Ada"}))
+
+
 class OnlyTest(unittest.TestCase):
     """--only names one module's script; one that matches nothing is a usage error, not a pass."""
 
