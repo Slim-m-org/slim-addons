@@ -16,6 +16,8 @@ pub struct Options {
     pub path: String,
     pub mode: Mode,
     pub caller: Option<String>,
+    /// The display name sent as `caller.name`, as a level 7 host does.
+    pub caller_name: Option<String>,
     pub fuel: Option<u64>,
     pub kv_file: Option<String>,
     pub fetch_file: Option<String>,
@@ -31,7 +33,7 @@ pub struct Options {
 /// The caller id a scheduled or event run carries: a module's own principal, not a person.
 pub const SCHEDULED_CALLER: &str = "scheduled";
 
-pub const USAGE: &str = "usage: run-module [--caller <id>] [--fuel <n>] [--kv-file <path>] [--fetch-file <path>] [--data-file <path>]\n\
+pub const USAGE: &str = "usage: run-module [--caller <id>] [--caller-name <name>] [--fuel <n>] [--kv-file <path>] [--fetch-file <path>] [--data-file <path>]\n\
     \x20                 [--log-file <path>] [--manifest <path>] [--setting <key>=<value>]... [--now-ms <n>]\n\
     \x20                 [--bot <id>]...\n\
     \x20                 (<module.wasm> <command> [input]\n\
@@ -48,6 +50,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         let mut value = |flag: &str, what: &str| rest.next().cloned().ok_or(format!("{flag} needs {what}"));
         match arg.as_str() {
             "--caller" => options.caller = Some(value(arg, "an id")?),
+            "--caller-name" => options.caller_name = Some(value(arg, "a name")?),
             "--fuel" => options.fuel = Some(number::<u64>(arg, &value(arg, "a number")?)?),
             "--now-ms" => options.now_ms = Some(number::<i64>(arg, &value(arg, "a number")?)?),
             "--kv-file" => options.kv_file = Some(value(arg, "a path")?),
@@ -101,6 +104,7 @@ impl Options {
             path: String::new(),
             mode: Mode::Tick(String::new()),
             caller: None,
+            caller_name: None,
             fuel: None,
             kv_file: None,
             fetch_file: None,
@@ -135,6 +139,12 @@ mod tests {
         assert_eq!((o.caller.as_deref(), o.fuel, input.as_str()), (Some("u1"), Some(9), "x"));
         assert!(parse_args(&args(&["--fuel", "many", "m.wasm", "play"])).is_err());
         assert!(parse_args(&args(&["m.wasm"])).is_err());
+    }
+
+    #[test]
+    fn a_caller_name_is_read() {
+        let o = parse_args(&args(&["--caller", "u1", "--caller-name", "Ada L", "m.wasm", "play"])).unwrap();
+        assert_eq!(o.caller_name.as_deref(), Some("Ada L"));
     }
 
     #[test]

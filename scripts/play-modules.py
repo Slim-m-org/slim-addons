@@ -4,8 +4,9 @@
 Usage: python3 scripts/play-modules.py <run-module-binary> [--only <module id>] [--show]
 
 A script, or one scenario in it, may set `entropy`, the run's seed (default
-"play-modules"), so a dealt board is the same every run, and `settings`, values
-for the manifest's settings. A fixed entropy also repeats an id a module derives
+"play-modules"), so a dealt board is the same every run, `settings`, values
+for the manifest's settings, and `names`, a map of caller id to the display name
+sent as `caller.name` (a caller not in it is sent no name). A fixed entropy also repeats an id a module derives
 from it, so steps that make two things in one scenario give each its own `now_ms`.
 
 A module with an `app` extension point keeps its play script in
@@ -179,9 +180,11 @@ def runner_for(runner, wasm, manifest, scratch, script):
     # A fixed entropy makes a module that rolls dice or deals a board play the same game every run.
     env = {**os.environ, "RUN_MODULE_ENTROPY": script.get("entropy", "play-modules")}
     settings = [arg for key, value in script.get("settings", {}).items() for arg in ("--setting", f"{key}={value}")]
+    names = script.get("names", {})
 
     def run(caller, payload, now_ms, command):
-        common = ["--fuel", str(limits["fuel"]), "--now-ms", str(now_ms), "--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", *settings]
+        named = ["--caller-name", names[caller]] if caller in names else []
+        common = ["--fuel", str(limits["fuel"]), "--now-ms", str(now_ms), "--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", *named, *settings]
         if payload.startswith(TICK):
             argv = [runner, "--caller", caller, *common, "--tick", payload[len(TICK):], wasm]
         else:
