@@ -417,3 +417,28 @@ fn the_season_end_claim_fixes_the_standings_the_herald_posts() {
     let posted = call(&host, "herald", "bot", &game_id, now + 10_000, json!({}));
     assert!(!posted["output"].as_str().unwrap().contains("Late Frame"), "{posted}");
 }
+
+#[test]
+fn a_flood_of_reactions_and_moves_leaves_a_bounded_number_of_rows() {
+    use crate::store::{Store, KEEP_ROWS};
+    let host = FakeHost::default();
+    let reaction = |i: u32| {
+        json!({"event": "reaction.changed", "id": format!("r{i}"), "at_ms": T0, "data": {"message_id": format!("m{i}"), "count": 1}}).to_string()
+    };
+    let total = KEEP_ROWS as u32 + 1500;
+    for i in 0..total {
+        host.next_run();
+        let req = json!({"command": "@event", "input": reaction(i), "caller": {"id": "bot"}, "now_ms": T0});
+        crate::handle(&host, req.to_string().as_bytes());
+    }
+    let store = Store::new(&host);
+    let mv = Move { pid: "p".into(), act: "burst".into(), arg: String::new() };
+    for _ in 0..total {
+        host.next_run();
+        store.log_move("g", &mv, T0).unwrap();
+    }
+    let ceiling = KEEP_ROWS as usize + 250;
+    assert!(host.rows("inbox").len() <= ceiling, "inbox kept {}", host.rows("inbox").len());
+    assert!(host.rows("moves").len() <= ceiling, "moves kept {}", host.rows("moves").len());
+    assert!(host.rows("inbox").len() >= KEEP_ROWS as usize, "the newest rows must stay");
+}

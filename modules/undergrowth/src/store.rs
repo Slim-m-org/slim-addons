@@ -9,6 +9,11 @@ use crate::moves::{Move, Weather};
 /// The most moves and weather one frame takes in; the rest wait for the next frame.
 const PAGE: u32 = 40;
 
+/// Rows each of the moves and inbox tables keeps, whatever their age, so one member cannot fill the quota.
+pub const KEEP_ROWS: i64 = 4000;
+/// A flooded table is trimmed each time its newest id passes a multiple of this.
+const TRIM_EVERY: i64 = 250;
+
 pub struct Store<'a, H: Host> {
     host: &'a H,
 }
@@ -34,7 +39,27 @@ impl<'a, H: Host> Store<'a, H> {
     pub fn log_move(&self, game: &str, mv: &Move, now_ms: i64) -> Result<i64, String> {
         let values = json!({"game": game, "pid": mv.pid, "act": mv.act, "arg": mv.arg, "at_ms": now_ms});
         let reply = self.data(json!({"op": "insert", "table": "moves", "values": values}))?;
-        Ok(reply["rows"][0]["_id"].as_i64().unwrap_or(0))
+        let id = reply["rows"][0]["_id"].as_i64().unwrap_or(0);
+        self.trim_after("moves", id, 1);
+        Ok(id)
+    }
+
+    /// Drops the oldest rows once the newest id has moved past a trim point; best effort, since the write already landed.
+    fn trim_after(&self, table: &str, newest_id: i64, added: i64) {
+        if newest_id <= KEEP_ROWS || newest_id / TRIM_EVERY == (newest_id - added) / TRIM_EVERY {
+            return;
+        }
+        let _ = self.data(json!({"op": "delete", "table": table, "where": [cond("_id", "lt", json!(newest_id - KEEP_ROWS))]}));
+    }
+
+    /// Drops all but the newest `KEEP_ROWS` of a table; the daily tidy-up calls it for rows no insert reply could trim.
+    pub fn trim(&self, table: &str) -> Result<(), String> {
+        let reply = self.data(json!({"op": "query", "table": table, "order": [{"col": "_id", "dir": "desc"}], "limit": 1}))?;
+        let newest = Self::rows(&reply).first().and_then(|r| r["_id"].as_i64()).unwrap_or(0);
+        if newest > KEEP_ROWS {
+            self.data(json!({"op": "delete", "table": table, "where": [cond("_id", "lt", json!(newest - KEEP_ROWS))]}))?;
+        }
+        Ok(())
     }
 
     /// Each move's id, when it was logged, and the move.
@@ -59,7 +84,11 @@ impl<'a, H: Host> Store<'a, H> {
         }
         let rows: Vec<Value> =
             items.iter().map(|w| json!({"kind": w.kind, "at": w.at, "amount": w.amount, "at_ms": now_ms})).collect();
-        self.data(json!({"op": "insert", "table": "inbox", "rows": rows})).map(|_| ())
+        let reply = self.data(json!({"op": "insert", "table": "inbox", "rows": rows}))?;
+        if let Some(newest) = Self::rows(&reply).last().and_then(|r| r["_id"].as_i64()) {
+            self.trim_after("inbox", newest, items.len() as i64);
+        }
+        Ok(())
     }
 
     pub fn weather_after(&self, after: i64) -> Result<Vec<(i64, Weather)>, String> {

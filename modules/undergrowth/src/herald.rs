@@ -64,6 +64,8 @@ pub fn almanac<H: Host>(store: &Store<H>, settings: &Settings, now_ms: i64) -> R
     let latest = store.latest_game()?.filter(|g| g["updated_ms"].as_i64().unwrap_or(0) > since && has_colonies(g));
     store.prune("inbox", now_ms - 3 * DAY_MS)?;
     store.prune("moves", now_ms - 2 * DAY_MS)?;
+    store.trim("inbox")?;
+    store.trim("moves")?;
     store.prune("links", now_ms - DAY_MS)?;
     if !settings.almanac {
         return Ok(format!("the almanac is switched off; tidied up and counted {calls} calls"));
