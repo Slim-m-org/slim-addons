@@ -47,13 +47,18 @@ SAMPLES = {
     ("tags", "tag"): ("rules", ""),
     ("tags", "edit"): ("rules Be nice", ""),
     ("tags", "remove"): ("rules", ""),
-    ("transcript", "transcript"): ("", "No call is being transcribed right now."),
+    ("transcript", "transcript"): ("", ""),
     ("transcript", "flush"): ("", "Posted 0."),
     ("xp", "catchup"): ("", "Awarded 2 sessions."),
     ("word-filter", "filter-test"): ("hello there", "Nothing in that is filtered."),
     ("weather", "now"): ("Berlin", "Berlin, Germany: overcast, 12.3\u00b0C (feels like 10.1\u00b0C), wind 14 km/h"),
     ("undergrowth", "almanac"): ("", "a quiet day; nothing to post"),
     ("undergrowth", "herald"): ("", "no season has been played yet"),
+}
+
+# Commands the runner cannot give a call context to, so the module's own refusal is the answer: (module, command) -> what the error starts with.
+REFUSALS = {
+    ("transcript", "transcript"): "Join the call you want a transcript of",
 }
 
 # Commands that need stored data first: (module, command) -> commands to run before it, in the same kv store.
@@ -136,6 +141,9 @@ def check_sample(runner, m, command, wasm, budget):
                 return [f"setup {step!r}: {problem}"]
         now_ms = NOW_MS + LATER_MS.get(key, 0)
         reply, posts, problem = run_once(runner, [*fuel, *run_flags(m["id"], scratch, now_ms), wasm, command, text], timeout)
+    if key in REFUSALS:
+        error = (reply or {}).get("error", "")
+        return [] if error.startswith(REFUSALS[key]) else [f"expected the refusal {REFUSALS[key]!r}, got {reply!r}"]
     if problem:
         return [problem]
     problems = []
