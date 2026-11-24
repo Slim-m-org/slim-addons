@@ -9,7 +9,7 @@ use crate::settings::Settings;
 /// A run may post at most three times, so it stops there and the next run takes the rest.
 const PER_RUN: i64 = 3;
 const KEEP_MS: i64 = 30 * 86_400_000;
-const PRUNE_PER_RUN: i64 = 2;
+const PRUNE_PER_RUN: i64 = 10;
 
 pub fn post<H: Host>(host: &H, content: &str) -> Result<(), String> {
     host.call(&json!({"capability": "message.post", "content": content})).map(|_| ())
@@ -44,6 +44,7 @@ pub fn run<H: Host>(host: &H, settings: &Settings, now_ms: i64) -> Result<String
             }
         }
     }
+    store.sweep_over(&[], now_ms)?;
     store.prune(now_ms - KEEP_MS, PRUNE_PER_RUN)?;
     Ok(match problem {
         Some(why) => format!("Reminded {sent}; a post was refused ({why})."),

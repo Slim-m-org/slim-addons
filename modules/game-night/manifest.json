@@ -3,7 +3,7 @@
   "addon_api": 1,
   "id": "game-night",
   "name": "Game night",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "summary": "Ping a group, vote on the time that works, say in, maybe or out, and get a reminder before the start.",
   "description": "Plan a game night from the apps menu, or type /night Valorant | fri 8pm, sat 9pm | Gamers. The module pings the role you name, lists up to six times to vote on, and collects In, Maybe or Out from each member. The host closes the poll to settle on the time with the most votes, and a reminder goes to the channel shortly before it starts, mentioning the role with a count of who is in. Nights and votes are kept in the module's own small database (data.store); the ping and the reminder are messages posted by the module (message.post), and the timer that sends reminders is a schedule an admin approves when installing. The reminder goes to the channel an admin chose for this module. Members are known to the module only by an opaque id, so it can count answers but cannot list names or mention the people who said they are in.",
   "author": "slim-m",
@@ -18,8 +18,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/game-night/0.1.1/module.wasm",
-    "sha256": "b1661784c46f83511e15c04549789c50a933ea3bc56666ef9f55d8ed218c5e7b"
+    "path": "modules/game-night/0.1.2/module.wasm",
+    "sha256": "7f4368bf73c6360462bc829bd6f368c22b3f8ca4e5003233a694c7674ff4bda8"
   },
   "permissions": [
     {
@@ -170,6 +170,12 @@
     }
   ],
   "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "A member can have at most three game nights going, and the server at most fifty, so one member cannot fill the module's storage. Finished and cancelled nights are cleared first."
+      ]
+    },
     {
       "version": "0.1.1",
       "changes": [

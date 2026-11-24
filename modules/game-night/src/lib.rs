@@ -5,6 +5,8 @@
 //! `run(in_ptr, in_len) -> packed(out_ptr, out_len)`, and imports only `slim.host_call`
 //! for `data.store` and `message.post`. It never traps on bad input.
 
+#[cfg(test)]
+mod fake;
 mod host;
 mod night;
 mod parse;

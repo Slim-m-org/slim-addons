@@ -12,6 +12,12 @@ use crate::parse::Slot;
 pub const OPEN: i64 = -1;
 pub const CANCELLED: i64 = -2;
 const UNIQUE_CLASH: &str = "unique column";
+/// Nights one host may have running at once.
+pub const MAX_PER_HOST: i64 = 3;
+/// Nights the whole module keeps at once, so one member cannot fill the store for everyone.
+pub const MAX_NIGHTS: i64 = 50;
+/// Nights one sweep looks at, and so the most it removes.
+const SWEEP: i64 = 20;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Night {
@@ -40,6 +46,20 @@ impl Answer {
             "out" => Some(Answer::Out),
             _ => None,
         }
+    }
+}
+
+impl Night {
+    /// A cancelled night, or one whose settled time (or last offered time, while still open) has passed.
+    pub fn over(&self, now_ms: i64) -> bool {
+        if self.chosen == CANCELLED {
+            return true;
+        }
+        let start = match usize::try_from(self.chosen).ok().and_then(|i| self.slots.get(i)) {
+            Some(slot) => Some(slot.start_ms),
+            None => self.slots.iter().map(|s| s.start_ms).max(),
+        };
+        start.is_none_or(|t| t <= now_ms)
     }
 }
 
@@ -162,14 +182,51 @@ impl<'a, H: Host> Store<'a, H> {
         .map(|_| ())
     }
 
+    /// Frees room for a new night: finished and cancelled nights go first, then the caps apply.
+    pub fn make_room(&self, host: &str, now_ms: i64) -> Result<(), String> {
+        let mine = [json!({"col": "host", "op": "eq", "val": host})];
+        self.sweep_over(&mine, now_ms)?;
+        if self.count_nights(&mine)? >= MAX_PER_HOST {
+            return Err(format!("you already have {MAX_PER_HOST} game nights going - cancel one first"));
+        }
+        self.sweep_over(&[], now_ms)?;
+        if self.count_nights(&[])? >= MAX_NIGHTS {
+            return Err("this server has too many game nights going - try again once one has passed".to_owned());
+        }
+        Ok(())
+    }
+
+    /// Forgets finished nights among the oldest few that match, so a flood cannot outrun the cleanup.
+    pub fn sweep_over(&self, filters: &[Value], now_ms: i64) -> Result<i64, String> {
+        let reply = self.data(json!({"op": "query", "table": "nights", "limit": SWEEP, "order": [{"col": "created", "dir": "asc"}], "where": filters}))?;
+        let mut gone = 0;
+        for row in reply["rows"].as_array().into_iter().flatten() {
+            let finished = night_of(row).is_none_or(|night| night.over(now_ms));
+            if finished {
+                self.forget(row["night_id"].as_str().unwrap_or_default())?;
+                gone += 1;
+            }
+        }
+        Ok(gone)
+    }
+
+    fn count_nights(&self, filters: &[Value]) -> Result<i64, String> {
+        let reply = self.data(json!({"op": "count", "table": "nights", "where": filters}))?;
+        Ok(reply["count"].as_i64().unwrap_or(0))
+    }
+
+    fn forget(&self, id: &str) -> Result<(), String> {
+        self.data(json!({"op": "delete", "table": "votes", "where": [{"col": "night_id", "op": "eq", "val": id}]}))?;
+        self.data(json!({"op": "delete", "table": "nights", "where": [{"col": "night_id", "op": "eq", "val": id}]}))?;
+        Ok(())
+    }
+
     /// Forgets nights created before `before_ms` along with their votes, a few at a time.
     pub fn prune(&self, before_ms: i64, limit: i64) -> Result<i64, String> {
         let old = self.data(json!({"op": "query", "table": "nights", "limit": limit, "where": [{"col": "created", "op": "lt", "val": before_ms}]}))?;
         let mut gone = 0;
         for row in old["rows"].as_array().into_iter().flatten() {
-            let id = row["night_id"].as_str().unwrap_or_default();
-            self.data(json!({"op": "delete", "table": "votes", "where": [{"col": "night_id", "op": "eq", "val": id}]}))?;
-            self.data(json!({"op": "delete", "table": "nights", "where": [{"col": "night_id", "op": "eq", "val": id}]}))?;
+            self.forget(row["night_id"].as_str().unwrap_or_default())?;
             gone += 1;
         }
         Ok(gone)
