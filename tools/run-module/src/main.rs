@@ -101,7 +101,8 @@ fn run(options: &Options) -> Result<String, String> {
 
 fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
     let mut config = Config::default();
-    config.consume_fuel(options.fuel.is_some());
+    config.consume_fuel(true);
+    config.compilation_mode(wasmi::CompilationMode::Eager);
     let engine = Engine::new(&config);
     let module = Module::new(&engine, bytes).map_err(|e| format!("not valid wasm: {e}"))?;
 
@@ -120,9 +121,10 @@ fn run_bytes(bytes: &[u8], options: &Options) -> Result<String, String> {
 
     let manifest = load_manifest(options)?;
     let mut store = Store::new(&engine, build_host(options, manifest.as_ref())?);
-    if let Some(fuel) = options.fuel {
-        store.set_fuel(fuel).map_err(|e| format!("cannot meter the run: {e}"))?;
-    }
+    // Slim always meters; with no --fuel the budget is just too large to spend.
+    store
+        .set_fuel(options.fuel.unwrap_or(u64::MAX))
+        .map_err(|e| format!("cannot meter the run: {e}"))?;
     let mut linker = Linker::<Host>::new(&engine);
     host::link(&mut linker)?;
     let instance = linker
