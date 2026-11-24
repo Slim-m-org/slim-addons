@@ -44,12 +44,24 @@ pub fn plan(text: &str, now_ms: i64, offset_min: i64) -> Result<Plan, String> {
     if slots.is_empty() || slots.len() > MAX_SLOTS {
         return Err(format!("give 1 to {MAX_SLOTS} times, like fri 8pm"));
     }
-    let role = clean(&role.replace(['@', '[', ']'], ""), MAX_ROLE);
+    let role = clean(&role.replace(['[', ']'], ""), MAX_ROLE);
     Ok(Plan { game, slots, role })
 }
 
+/// The characters the host refuses in a post because they change what a reader sees without drawing anything.
+fn is_hidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(c,
+            '\u{00AD}' | '\u{034F}' | '\u{061C}' | '\u{115F}'..='\u{1160}' | '\u{17B4}'..='\u{17B5}' | '\u{180E}'
+            | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{2029}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{206F}'
+            | '\u{2800}' | '\u{3164}' | '\u{FEFF}' | '\u{FFA0}' | '\u{FFF9}'..='\u{FFFC}' | '\u{E0000}'..='\u{E007F}')
+}
+
+/// Plain text: no hidden characters and nothing a message would read as a mention or markup, so a name cannot ping anyone.
+/// The role is the one place a mention is meant, and the module adds its brackets itself.
 fn clean(text: &str, max: usize) -> String {
-    text.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(max).collect()
+    let kept: String = text.chars().filter(|c| !is_hidden_char(*c) && !"@<>`".contains(*c)).collect();
+    kept.trim().chars().take(max).collect()
 }
 
 fn slot(spec: &str, now_ms: i64, offset_min: i64) -> Result<Slot, String> {
@@ -208,6 +220,13 @@ mod tests {
         assert_eq!(labels("g | 2023-12-01 18:00", 0), ["Fri 1 Dec 18:00"]);
         assert!(plan("g | 2024-06-01 18:00", NOW, 0).unwrap_err().contains("60 days"));
         assert!(plan("g | 2023-11-14 08:00", NOW, 0).unwrap_err().contains("passed"));
+    }
+
+    #[test]
+    fn a_game_name_cannot_carry_a_mention_or_hidden_characters() {
+        let p = plan("@everyone <@123> `x`\u{200B}\u{202E} @[Mods] | tomorrow 8pm | @[Gam\u{200B}ers]", NOW, 0).unwrap();
+        assert_eq!(p.game, "everyone 123 x [Mods]");
+        assert_eq!(p.role, "Gamers");
     }
 
     #[test]

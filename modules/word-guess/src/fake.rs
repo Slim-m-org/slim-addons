@@ -64,6 +64,22 @@ impl FakeHost {
                     None => rows.push(values),
                 }
             }
+            "insert" => {
+                let values = request["values"].as_object().unwrap().clone();
+                if rows.iter().any(|r| r["k"] == values["k"]) {
+                    return Err("a unique column already holds that value".to_owned());
+                }
+                rows.push(values);
+            }
+            "update" => {
+                let values = request["values"].as_object().unwrap().clone();
+                let mut changed = 0;
+                for row in rows.iter_mut().filter(|r| matches(r, &request["where"])) {
+                    row.extend(values.clone());
+                    changed += 1;
+                }
+                return Ok(json!({"ok": true, "rows": [], "changed": changed}));
+            }
             "get" | "query" => {
                 out = rows.iter().filter(|r| matches(r, &request["where"])).cloned().collect();
                 if let Some(order) = request["order"].as_array().and_then(|o| o.first()) {

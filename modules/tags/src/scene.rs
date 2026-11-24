@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn the_board_reads_the_index_and_one_tag_only() {
+    fn the_board_lists_the_keys_and_reads_one_tag_only() {
         let host = seeded(&[("a", "1")]);
         host.next_run();
         frame(&host, r#"{"action":"show:a","state":""}"#);

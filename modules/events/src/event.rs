@@ -12,6 +12,8 @@ pub const MAX_ANSWERS: usize = 25;
 pub const MAX_TITLE: usize = 60;
 pub const MAX_WHERE: usize = 40;
 pub const MAX_NAME: usize = 24;
+/// Serialized bytes an event may reach: the store keeps 4096 per value, and multi-byte names count by byte.
+const MAX_BYTES: usize = 3800;
 const MAX_ID: usize = 64;
 const MINUTE: i64 = 60_000;
 
@@ -51,9 +53,18 @@ fn is_zero(n: &i64) -> bool {
     *n == 0
 }
 
-/// Plain text only: no control characters and nothing a message would read as a mention or markup.
+/// The characters the host refuses in a post because they change what a reader sees without drawing anything.
+fn is_hidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(c,
+            '\u{00AD}' | '\u{034F}' | '\u{061C}' | '\u{115F}'..='\u{1160}' | '\u{17B4}'..='\u{17B5}' | '\u{180E}'
+            | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{2029}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{206F}'
+            | '\u{2800}' | '\u{3164}' | '\u{FEFF}' | '\u{FFA0}' | '\u{FFF9}'..='\u{FFFC}' | '\u{E0000}'..='\u{E007F}')
+}
+
+/// Plain text only: no control or hidden characters and nothing a message would read as a mention or markup.
 pub fn clean(text: &str, max: usize) -> String {
-    let kept: String = text.chars().filter(|c| !c.is_control() && !"@<>`".contains(*c)).collect();
+    let kept: String = text.chars().filter(|c| !is_hidden_char(*c) && !"@<>`".contains(*c)).collect();
     let words: Vec<&str> = kept.split_whitespace().collect();
     words.join(" ").chars().take(max).collect()
 }
@@ -65,6 +76,7 @@ pub fn who(caller: &str) -> String {
 
 pub enum Refusal {
     Full,
+    TooLarge,
 }
 
 impl Event {
@@ -85,10 +97,15 @@ impl Event {
     pub fn answer(&mut self, caller: &str, name: &str, status: u8) -> Result<(), Refusal> {
         let key = who(caller);
         let name = clean(name, MAX_NAME);
-        if let Some(existing) = self.rs.iter_mut().find(|a| a.0 == key) {
-            existing.1 = status;
+        if let Some(index) = self.rs.iter().position(|a| a.0 == key) {
+            let before = self.rs[index].clone();
+            self.rs[index].1 = status;
             if !name.is_empty() {
-                existing.2 = name;
+                self.rs[index].2 = name;
+            }
+            if self.too_large() {
+                self.rs[index] = before;
+                return Err(Refusal::TooLarge);
             }
             return Ok(());
         }
@@ -96,7 +113,15 @@ impl Event {
             return Err(Refusal::Full);
         }
         self.rs.push(Answer(key, status, name));
+        if self.too_large() {
+            self.rs.pop();
+            return Err(Refusal::TooLarge);
+        }
         Ok(())
+    }
+
+    fn too_large(&self) -> bool {
+        serde_json::to_string(self).map_or(true, |json| json.len() > MAX_BYTES)
     }
 
     pub fn counts(&self) -> [usize; 3] {
@@ -176,6 +201,32 @@ mod tests {
         let size = serde_json::to_string(&e).unwrap().len();
         assert!(size < 4096 - 256, "{size}");
         assert!(20 * size < 64 * 1024, "{size}");
+    }
+
+    #[test]
+    fn hidden_characters_are_dropped_from_text() {
+        assert_eq!(clean("Game\u{200B} ni\u{202E}ght\u{FEFF}", 40), "Game night");
+    }
+
+    #[test]
+    fn multi_byte_names_stop_at_the_byte_budget_not_the_answer_count() {
+        for glyph in ["\u{4e2d}", "\u{1F600}"] {
+            let mut e = sample();
+            e.t = glyph.repeat(MAX_TITLE);
+            e.w = glyph.repeat(MAX_WHERE);
+            let mut refused = false;
+            for i in 0..MAX_ANSWERS {
+                let caller = format!("{i:016x}ffffffffffffffffffffffffffffffffffffffffffffffff");
+                if e.answer(&caller, &glyph.repeat(MAX_NAME), GOING).is_err() {
+                    refused = true;
+                    break;
+                }
+            }
+            assert!(refused, "the budget should bite before the answer count");
+            assert!(serde_json::to_string(&e).unwrap().len() <= 4096 - 256);
+            let id = e.rs[0].0.clone();
+            assert!(e.answer(&id, "", NO).is_ok(), "changing an answer still fits");
+        }
     }
 
     #[test]

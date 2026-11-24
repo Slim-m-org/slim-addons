@@ -3,9 +3,9 @@
   "addon_api": 3,
   "id": "undergrowth",
   "name": "Undergrowth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "summary": "A fungal turf war living under your space: messages fall as leaves, reactions bring rain, calls bring warmth, and up to six colonies grow, fight and fruit mushrooms that sing.",
-  "description": "Launch Undergrowth from the apps menu and press join to root a colony in a procedurally dealt slab of soil. Tap the soil to lure your hyphae toward it, drag to lay a trail, and long press (or right click) your own hyphae to fruit a mushroom. Hyphae drink nutrients, harden with age, outnumber and take a rival's cells, and die back when they are cut off from their heart or an outpost, so cutting a rival's network is a strategy. Mushrooms score while they stand, throw spores that root new outposts, and are the notes of the song button. The world keeps moving on its own while people watch, and the space feeds it: every message posted in a channel the module can see drops a leaf of nutrients into the topsoil, a reaction brings rain that speeds growth, time spent in calls brings a warm spell, and someone joining the space stirs a wild rot nobody plays. My colony opens a private panel with your stats, a portrait of your network, bursts and spore shots. A season ends after a set time; the results go to the module's channel and a short almanac is posted once a day. Members who choose to link their profile see their record on it. It keeps its moves, weather and records in its own database (data.store), listens for messages, reactions, joins and calls (events), reads finished calls so none is counted twice (log.read), and posts results on a timer (schedule and message.post); an admin approves each when installing.",
+  "description": "Launch Undergrowth from the apps menu and press join to root a colony in a procedurally dealt slab of soil. Tap the soil to lure your hyphae toward it, drag to lay a trail, and long press (or right click) your own hyphae to fruit a mushroom. Hyphae drink nutrients, harden with age, outnumber and take a rival's cells, and die back when they are cut off from their heart or an outpost, so cutting a rival's network is a strategy. Mushrooms score while they stand, throw spores that root new outposts, and are the notes of the song button. The world keeps moving on its own while people watch, and the space feeds it: every message posted in a channel the module can see drops a leaf of nutrients into the topsoil, a reaction brings rain that speeds growth, time spent in calls brings a warm spell, and someone joining the space stirs a wild rot nobody plays. My colony opens a private panel with your stats, a portrait of your network, bursts and spore shots. A season ends after a set time; the results go to the module's channel and a short almanac is posted once a day. Only members who choose to link their profile have a profile section, which shows their record, how many leaves they dropped and how long they kept it warm in calls; an unlinked member shows nothing, and bots earn nothing. It keeps its moves, weather and records in its own database (data.store), listens for messages, reactions, joins and calls (events), reads finished calls so none is counted twice (log.read), and posts results on a timer (schedule and message.post); an admin approves each when installing.",
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {
@@ -18,8 +18,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/undergrowth/0.1.0/module.wasm",
-    "sha256": "7257bd377d884ca7b60ff5083afa53074e9bd66f972e17717cc4765f8479d505"
+    "path": "modules/undergrowth/0.1.1/module.wasm",
+    "sha256": "ee8f1489f5d511ca3d0d43196fd4fef1cbe8fe321c9187fe6da95eec22630d71"
   },
   "permissions": [
     {
@@ -366,6 +366,15 @@
     }
   ],
   "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "Reactions, messages and presses no longer pile up without limit: only the newest rows of the move log and the weather inbox are kept.",
+        "A profile link code can be used only once, even when two messages carry it at the same moment.",
+        "The profile section shows leaves and call time only for members who linked their profile.",
+        "Bots in a call no longer warm the soil or get a profile entry."
+      ]
+    },
     {
       "version": "0.1.0",
       "changes": [

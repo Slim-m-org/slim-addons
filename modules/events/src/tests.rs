@@ -222,13 +222,22 @@ fn a_reminder_mentions_at_most_eight_and_counts_the_rest() {
 }
 
 #[test]
-fn a_reminder_that_cannot_be_posted_is_not_marked_sent() {
+fn a_refused_reminder_is_reported_ok_and_not_retried_so_it_cannot_trip_the_breaker() {
     let host = FakeHost { refuse_posts: true, ..FakeHost::default() };
     let id = plan(&host, "in 5h");
-    let failed = call(&host, "tick", &id, "bot", NOW + 4 * HOUR);
-    assert_eq!(failed["ok"], false);
-    assert!(failed["error"].as_str().unwrap().contains("could not post the reminder"));
-    assert!(!stored(&host, &id).r);
+    let refused = call(&host, "tick", &id, "bot", NOW + 4 * HOUR);
+    assert_eq!(refused["ok"], true, "{refused}");
+    assert!(refused["output"].as_str().unwrap().contains("refused"));
+    assert!(stored(&host, &id).r);
+    assert_eq!(call(&host, "tick", &id, "bot", NOW + 4 * HOUR)["output"], "Nothing to remind.");
+}
+
+#[test]
+fn a_title_with_hidden_characters_is_planned_without_them() {
+    let host = FakeHost::default();
+    let answer = call(&host, "event", "Game\u{200B} night\u{202E} | in 5h | Voice", "host-1", NOW);
+    let id = scene(&answer)["state"].as_str().unwrap().to_owned();
+    assert_eq!(stored(&host, &id).t, "Game night");
 }
 
 #[test]
@@ -313,4 +322,31 @@ fn the_host_and_older_servers_are_handled_without_trapping() {
     assert_eq!(call(&host, "nope", "", "a", NOW)["ok"], false);
     let nobody = call(&host, "event", "Game | in 2h", "", NOW);
     assert_eq!(nobody["ok"], false);
+}
+
+#[test]
+fn an_event_no_index_names_is_listed_counted_and_pruned() {
+    let host = FakeHost::default();
+    let id = plan(&host, "in 2h");
+    let mut lost = stored(&host, &id);
+    lost.n = 7;
+    store::save(&host, "racer", &lost).unwrap();
+    assert_eq!(store::all(&host).unwrap().len(), 2);
+    let listed = call(&host, "event-admin", "list", "bot", NOW);
+    assert!(listed["output"].as_str().unwrap().contains("#7"), "{listed}");
+    for i in 0..store::MAX_EVENTS - 2 {
+        store::save(&host, &format!("filler{i}"), &lost).unwrap();
+    }
+    let full = call(&host, "event", "One more | in 2h", "h", NOW);
+    assert!(full["error"].as_str().unwrap().contains("already planned"), "{full}");
+    assert_eq!(call(&host, "tick", "", "bot", NOW + 3 * DAY)["output"], format!("Removed {} finished events.", store::MAX_EVENTS));
+    assert!(host.kv.borrow().is_empty());
+}
+
+#[test]
+fn an_event_that_no_longer_parses_is_deleted_when_pruned() {
+    let host = FakeHost::default();
+    host.kv.borrow_mut().insert("e:broken".into(), "{not json".into());
+    assert_eq!(store::prune(&host, NOW).unwrap(), 1);
+    assert!(host.kv.borrow().is_empty());
 }

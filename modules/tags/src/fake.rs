@@ -70,6 +70,11 @@ impl Host for FakeHost {
         Ok(())
     }
 
+    fn keys(&self) -> Result<Vec<String>, KvError> {
+        self.enter()?;
+        Ok(self.map.borrow().keys().cloned().collect())
+    }
+
     fn post(&self, content: &str) -> Result<(), PostError> {
         match self.post_mode.borrow_mut().take() {
             Some(error) => Err(error),

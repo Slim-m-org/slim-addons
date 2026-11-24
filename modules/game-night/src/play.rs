@@ -152,6 +152,9 @@ fn plan<H: Host>(host: &H, settings: &Settings, run: &Run, text: &str) -> String
         chosen: OPEN, remind_at: 0, created: run.now_ms,
     };
     let store = Store::new(host);
+    if let Err(why) = store.make_room(&run.caller, run.now_ms) {
+        return scene::form(Some(&why));
+    }
     if let Err(why) = store.create(&created) {
         return scene::form(Some(&format!("could not save the night ({why})")));
     }
@@ -167,4 +170,63 @@ fn ping<H: Host>(host: &H, night: &Night) -> Result<(), String> {
     let times: Vec<&str> = night.slots.iter().map(|s| s.label.as_str()).collect();
     let content = format!("@[{}] {} - who is up for it? Tap the times that work: {}", night.role, night.game, times.join(", "));
     crate::remind::post(host, &content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fake::FakeHost;
+
+    const NOW: i64 = 1_700_000_000_000;
+    const DAY: i64 = 86_400_000;
+
+    fn settings() -> Settings {
+        Settings::from_value(&serde_json::Value::Null)
+    }
+
+    fn plan_as(host: &FakeHost, caller: &str, entropy: &str, now_ms: i64) -> String {
+        let run = Run::of(caller, now_ms, entropy);
+        night(host, &settings(), &run, &format!("Valorant | {}", if now_ms > NOW { "2024-03-01 8pm" } else { "2023-12-05 8pm" }))
+    }
+
+    #[test]
+    fn a_fourth_open_night_for_one_host_is_refused() {
+        let host = FakeHost::default();
+        for i in 0..3 {
+            assert!(!plan_as(&host, "a1", &i.to_string(), NOW).contains("going"), "night {i} was refused");
+        }
+        let fourth = plan_as(&host, "a1", "x", NOW);
+        assert!(fourth.contains("already have 3 game nights going"), "{fourth}");
+        assert_eq!(host.nights.borrow().len(), 3);
+        assert!(!plan_as(&host, "b2", "y", NOW).contains("going"), "another host is not held to a1's cap");
+    }
+
+    #[test]
+    fn a_flood_from_many_hosts_stays_under_the_overall_cap() {
+        let host = FakeHost::default();
+        for i in 0..200 {
+            plan_as(&host, &format!("host{i}"), &i.to_string(), NOW);
+        }
+        assert_eq!(host.nights.borrow().len(), 50);
+        assert!(plan_as(&host, "late", "z", NOW).contains("too many game nights"));
+    }
+
+    #[test]
+    fn finished_and_cancelled_nights_make_room_first() {
+        let host = FakeHost::default();
+        for i in 0..3 {
+            plan_as(&host, "a1", &i.to_string(), NOW);
+        }
+        let first = host.nights.borrow()[0]["night_id"].as_str().unwrap().to_owned();
+        let store = Store::new(&host);
+        assert!(store.cancel(&first).unwrap());
+        let second = host.nights.borrow()[1]["night_id"].as_str().unwrap().to_owned();
+        store.toggle_slot(&second, "m1", 0).unwrap();
+
+        assert!(!plan_as(&host, "a1", "n", NOW).contains("going"), "a cancelled night still held a place");
+        let after_the_nights = NOW + 100 * DAY;
+        assert!(!plan_as(&host, "a1", "m", after_the_nights).contains("going"));
+        assert_eq!(host.nights.borrow().len(), 1, "the passed nights and their votes are gone");
+        assert!(host.votes.borrow().is_empty());
+    }
 }

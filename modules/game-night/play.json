@@ -820,19 +820,19 @@
      "now_ms": 1700000000002
     },
     {
-     "as": "a1",
+     "as": "b2",
      "do": "plan:G3 | fri 8pm | Gamers",
      "expect": {},
      "now_ms": 1700000000003
     },
     {
-     "as": "a1",
+     "as": "b2",
      "do": "vote:0",
      "expect": {},
      "now_ms": 1700000000003
     },
     {
-     "as": "a1",
+     "as": "b2",
      "do": "close poll",
      "expect": {},
      "now_ms": 1700000000003
@@ -973,7 +973,7 @@
      "do": "plan:Evil\n@[Everyone] game | fri 8pm | @[Core\nTeam]",
      "expect": {
       "posts_has": [
-       "@[CoreTeam] Evil@[Everyone] game"
+       "@[CoreTeam] Evil[Everyone] game"
       ]
      }
     }

@@ -2,10 +2,17 @@
   "schema": 1,
   "id": "minesweeper",
   "name": "Minesweeper",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "summary": "Clear a board together: a clock, right-click flags, three sizes, a win card and a scoreboard of the fastest times.",
-  "description": "Launch Minesweeper from the apps menu (or type /minesweeper) and clear the board together: everyone who can see it may play, or the host can close it to themselves. Tap to reveal, right-click or long-press to flag (or switch to flagging for a finger with no right button). The first tap is always safe, the clock starts on it, and a cleared board shows your time. Pick beginner (9 by 9, 10 mines), intermediate (16 by 16, 40) or expert (30 by 16, 99), or type your own size. The field is rebuilt from a seed each frame to keep the shared state short. The seed is in that state, so anyone who reads it can work the mines out; this is a game to play together, not one with hidden information. Press 'new game' for a fresh field. Cleared boards on the three standard sizes go on a scoreboard of fastest times, kept in the module's own database (data.store, which an admin approves at install); the win is replayed from the move log before a time is written. The module is told only an opaque id for each player, so the scoreboard shows the name a player types there, or a few characters of their id.",
+  "description": "Launch Minesweeper from the apps menu (or type /minesweeper) and clear the board together: everyone who can see it may play, or the host can close it to themselves. Tap to reveal, right-click or long-press to flag (or switch to flagging for a finger with no right button). The first tap is always safe, the clock starts on it, and a cleared board shows your time. Pick beginner (9 by 9, 10 mines), intermediate (16 by 16, 40) or expert (30 by 16, 99), or type your own size. The field is rebuilt from a seed each frame to keep the shared state short. The seed is in that state, so anyone who reads it can work the mines out; this is a game to play together, not one with hidden information. Press 'new game' for a fresh field. Cleared boards on the three standard sizes go on a scoreboard of fastest times, kept in the module's own database (data.store, which an admin approves at install); the module keeps each running board itself, and the win is replayed from the move log before a time is written. The module is told only an opaque id for each player, so the scoreboard shows the name a player types there, or a few characters of their id.",
   "changelog": [
+    {
+      "version": "0.6.0",
+      "changes": [
+        "A win is scored from the board the module kept, not from the state a client sends back, so a made-up state can no longer post a time or credit other players.",
+        "A board already in progress when this version is installed carries on but is not scored."
+      ]
+    },
     {
       "version": "0.5.0",
       "changes": [
@@ -55,8 +62,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/minesweeper/0.5.0/module.wasm",
-    "sha256": "5fa7ccecf179038b48696a28fb50f6722647a0474abd82c3a1314ccc39d46a1f"
+    "path": "modules/minesweeper/0.6.0/module.wasm",
+    "sha256": "714d1c2b6878976a53f2ec7b85306be510f91bea3ee669a6587dc81d24eff11f"
   },
   "permissions": [
     {
@@ -131,6 +138,24 @@
           {
             "name": "name",
             "type": "text"
+          }
+        ]
+      },
+      {
+        "name": "games",
+        "columns": [
+          {
+            "name": "k",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "state",
+            "type": "text"
+          },
+          {
+            "name": "at",
+            "type": "int"
           }
         ]
       }

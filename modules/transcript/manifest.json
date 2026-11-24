@@ -3,7 +3,7 @@
   "addon_api": 4,
   "id": "transcript",
   "name": "Call transcript",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "summary": "Writes down a voice call, with everyone's agreement, and posts the transcript when it ends.",
   "description": "When everyone in a voice call has agreed to it, Call transcript writes down what is said and posts a readable transcript in the channel an admin picked, as Call transcript, once the call ends. Each speaker is a number, lines are timed from the start of the call, and a speaker's lines that follow each other are one paragraph. A long call is posted as several messages. /transcript posts what has been said so far in a call that is on. It hears a call only in the voice channels an admin chose for it, never starts by itself, and keeps no audio: speech is turned into text by a service the server's operator runs, and this module only receives the text. It uses call.audio to receive that text, data.store to keep it until the call ends and for the days you set, message.post to post it, and schedule to post a long transcript's later parts and to tidy up. An admin approves each when installing.",
   "author": "slim-m",
@@ -18,14 +18,14 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/transcript/0.1.0/module.wasm",
-    "sha256": "258447e8b8ea8095a2f55357ea6e3936739b63fd332de1f060a23344eaf716dd"
+    "path": "modules/transcript/0.1.1/module.wasm",
+    "sha256": "4ad84328c2391d7d2b58093465dc1bd7c83b2ba885465307e6fddb3298f7aa07"
   },
   "permissions": [
     {
       "key": "post",
       "name": "Post the transcript so far",
-      "description": "Post what has been said in a call that is on, in the channel you run it in."
+      "description": "Post what has been said in the call you are in, in the channel you run it in."
     },
     {
       "key": "flush",
@@ -106,6 +106,26 @@
           },
           {
             "name": "parts",
+            "type": "int"
+          },
+          {
+            "name": "channel_id",
+            "type": "text"
+          },
+          {
+            "name": "attempts",
+            "type": "int"
+          },
+          {
+            "name": "claimed_from",
+            "type": "int"
+          },
+          {
+            "name": "claimed_to",
+            "type": "int"
+          },
+          {
+            "name": "claimed_ms",
             "type": "int"
           }
         ]
@@ -225,6 +245,14 @@
     }
   ],
   "changelog": [
+    {
+      "version": "0.1.1",
+      "changes": [
+        "/transcript posts only the call the member is in.",
+        "A call the host keeps refusing is parked instead of holding up the timer for other calls.",
+        "Lines claimed by a run that was cut off are posted again on a later run."
+      ]
+    },
     {
       "version": "0.1.0",
       "changes": [

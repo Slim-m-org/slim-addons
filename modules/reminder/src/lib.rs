@@ -29,12 +29,31 @@ struct Request {
     /// The host's clock, UTC epoch milliseconds; zero when the host gives none.
     #[serde(default)]
     now_ms: i64,
+    #[serde(default)]
+    caller: Caller,
+    #[serde(default)]
+    context: Context,
+}
+
+#[derive(Deserialize, Default)]
+struct Caller {
+    #[serde(default)]
+    id: String,
+}
+
+#[derive(Deserialize, Default)]
+struct Context {
+    /// The channel the command ran in, or the one a timer was armed from.
+    #[serde(default)]
+    channel_id: String,
 }
 
 #[derive(Serialize)]
 struct OkResponse {
     ok: bool,
     output: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_after: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -76,15 +95,22 @@ fn handle<H: host::Host>(host: &H, request: &[u8]) -> Vec<u8> {
         Ok(req) => req,
         Err(err) => return serialize_err(format!("invalid request: {err}")),
     };
-    let answer = command::run(host, &parsed.command, &parsed.input, (parsed.now_ms, &parsed.entropy));
-    match answer {
-        Ok(output) => serialize_ok(output),
+    let call = command::Call {
+        command: &parsed.command,
+        input: &parsed.input,
+        caller: &parsed.caller.id,
+        channel: &parsed.context.channel_id,
+        now_ms: parsed.now_ms,
+        entropy: &parsed.entropy,
+    };
+    match command::run(host, &call) {
+        Ok(reply) => serialize_ok(reply),
         Err(message) => serialize_err(message),
     }
 }
 
-fn serialize_ok(output: String) -> Vec<u8> {
-    serde_json::to_vec(&OkResponse { ok: true, output })
+fn serialize_ok(reply: command::Reply) -> Vec<u8> {
+    serde_json::to_vec(&OkResponse { ok: true, output: reply.output, run_after: reply.run_after })
         .unwrap_or_else(|_| br#"{"ok":false,"error":"failed to serialize output"}"#.to_vec())
 }
 

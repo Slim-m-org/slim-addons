@@ -16,10 +16,7 @@ import hmac
 import json
 import os
 import shutil
-import signal
-import socket
 import sqlite3
-import subprocess
 import sys
 import tempfile
 import time
@@ -28,17 +25,12 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+from e2e_server import REPO, Server, free_port  # noqa: F401
+
 API_KEY, API_SECRET = "APIxptestkey", "an-xp-test-secret-of-at-least-32-chars"
 MINUTE_S = 62
 SETTINGS = {"xp_per_minute": 100, "xp_per_message": 3, "message_cooldown_s": 60}
 CAPABILITIES = ["events", "data.store", "log.read", "schedule"]
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def uuid7():
@@ -47,43 +39,6 @@ def uuid7():
     raw[6] = 0x70 | (raw[6] & 0x0F)
     raw[8] = 0x80 | (raw[8] & 0x3F)
     return str(uuid.UUID(bytes=bytes(raw)))
-
-
-class Server:
-    def __init__(self, binary, workdir):
-        self.binary, self.workdir, self.port, self.proc = binary, workdir, free_port(), None
-        self.base = f"http://127.0.0.1:{self.port}"
-
-    def start(self):
-        env = {
-            **os.environ,
-            "SLIMM_PORT": str(self.port),
-            "SLIMM_DATABASE_PATH": str(self.workdir / "slimm.db"),
-            "SLIMM_ATTACHMENTS_DIR": str(self.workdir / "media"),
-            "SLIMM_MODULES_DIR": str(self.workdir / "modules"),
-            "SLIMM_DEV_MODULE_DIR": str(REPO),
-            "SLIMM_LIVEKIT_URL": "ws://127.0.0.1:1",
-            "SLIMM_LIVEKIT_API_KEY": API_KEY,
-            "SLIMM_LIVEKIT_API_SECRET": API_SECRET,
-            "SLIMM_LOG": "info",
-        }
-        log = open(self.workdir / "server.log", "ab")
-        self.proc = subprocess.Popen([self.binary], env=env, stdout=log, stderr=log, cwd=self.workdir)
-        for _ in range(100):
-            try:
-                urllib.request.urlopen(f"{self.base}/healthz", timeout=1)
-                return
-            except OSError:
-                time.sleep(0.2)
-        raise SystemExit("the server did not come up; see server.log in " + str(self.workdir))
-
-    def stop(self):
-        if self.proc and self.proc.poll() is None:
-            self.proc.send_signal(signal.SIGTERM)
-            try:
-                self.proc.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
 
 
 def call(server, method, path, body=None, token=None, raw=None, headers=None):

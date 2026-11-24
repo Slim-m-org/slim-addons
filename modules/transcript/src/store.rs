@@ -29,6 +29,14 @@ pub struct Call {
     pub speakers: i64,
     pub posted: i64,
     pub parts: i64,
+    /// The voice channel the call is in; empty for a call stored before the module kept it.
+    pub channel_id: String,
+    /// Posts the host refused in a row for this call.
+    pub attempts: i64,
+    /// The lines claimed for a post that was not confirmed yet, and when; zero when nothing is in flight.
+    pub claimed_from: i64,
+    pub claimed_to: i64,
+    pub claimed_ms: i64,
 }
 
 /// A person in a call: the number they hold once they spoke, and the name the host sent, if it sent one.
@@ -92,10 +100,11 @@ impl<'a, H: Host> Store<'a, H> {
     }
 
     /// Records a call; false when the host already holds one with this session id.
-    pub fn insert_call(&self, session_id: &str, started_ms: i64) -> Result<bool, String> {
+    pub fn insert_call(&self, (session_id, channel_id): (&str, &str), started_ms: i64) -> Result<bool, String> {
         let values = json!({
             "session_id": session_id, "started_ms": started_ms, "stopped_ms": 0, "last_ms": started_ms, "state": "on",
-            "reason": "", "sent": -1, "seen": 0, "dropped": 0, "speakers": 0, "posted": 0, "parts": 0
+            "reason": "", "sent": -1, "seen": 0, "dropped": 0, "speakers": 0, "posted": 0, "parts": 0,
+            "channel_id": channel_id, "attempts": 0, "claimed_from": 0, "claimed_to": 0, "claimed_ms": 0
         });
         match self.data("insert", "calls", json!({"values": values})) {
             Ok(_) => Ok(true),
@@ -113,6 +122,14 @@ impl<'a, H: Host> Store<'a, H> {
         let order = json!([{"col": "started_ms", "dir": order}]);
         let reply = self.data("query", "calls", json!({"where": [eq("state", state)], "order": order, "limit": limit}))?;
         Ok(rows(&reply).iter().map(parse_call).collect())
+    }
+
+    /// The newest call in `state` that is in this voice channel.
+    pub fn call_in_channel(&self, state: &str, channel_id: &str) -> Result<Option<Call>, String> {
+        let order = json!([{"col": "started_ms", "dir": "desc"}]);
+        let filters = json!([eq("state", state), eq("channel_id", channel_id)]);
+        let reply = self.data("query", "calls", json!({"where": filters, "order": order, "limit": 1}))?;
+        Ok(rows(&reply).first().map(parse_call))
     }
 
     /// Calls in `state` that nothing has touched since `before_ms`.
@@ -141,17 +158,32 @@ impl<'a, H: Host> Store<'a, H> {
         self.data("update", "calls", json!({"values": values, "add": add, "where": [eq("session_id", session_id)]})).map(|_| ())
     }
 
-    /// Takes the next `lines` of the transcript for this run; false when another run took them first.
-    pub fn claim_lines(&self, session_id: &str, (from, lines): (i64, i64)) -> Result<bool, String> {
+    /// Takes the next `lines` of the transcript for this run and marks them in flight; false when another run took them first.
+    pub fn claim_lines(&self, session_id: &str, (from, lines): (i64, i64), now_ms: i64) -> Result<bool, String> {
         let filters = json!([eq("session_id", session_id), {"col": "posted", "op": "eq", "val": from}]);
-        let reply = self.data("update", "calls", json!({"values": {"posted": from + lines}, "add": {"parts": 1}, "where": filters}))?;
+        let values = json!({"posted": from + lines, "claimed_from": from, "claimed_to": from + lines, "claimed_ms": now_ms});
+        let reply = self.data("update", "calls", json!({"values": values, "add": {"parts": 1}, "where": filters}))?;
         Ok(reply["changed"].as_i64().unwrap_or(0) == 1)
     }
 
-    /// Gives a claim back after the post failed, so the next run posts those lines.
-    pub fn release_lines(&self, session_id: &str, (from, lines): (i64, i64)) -> Result<(), String> {
+    /// Marks a claim as posted and forgets earlier refusals.
+    pub fn confirm_lines(&self, session_id: &str, to: i64) -> Result<(), String> {
+        let filters = json!([eq("session_id", session_id), {"col": "claimed_to", "op": "eq", "val": to}]);
+        let values = json!({"claimed_from": 0, "claimed_to": 0, "claimed_ms": 0, "attempts": 0});
+        self.data("update", "calls", json!({"values": values, "where": filters})).map(|_| ())
+    }
+
+    /// Gives a claim back after the post failed or was never confirmed, so the next run posts those lines; false when the claim had moved on.
+    pub fn release_lines(&self, session_id: &str, (from, lines): (i64, i64)) -> Result<bool, String> {
         let filters = json!([eq("session_id", session_id), {"col": "posted", "op": "eq", "val": from + lines}]);
-        self.data("update", "calls", json!({"values": {"posted": from}, "add": {"parts": -1}, "where": filters})).map(|_| ())
+        let values = json!({"posted": from, "claimed_from": 0, "claimed_to": 0, "claimed_ms": 0});
+        let reply = self.data("update", "calls", json!({"values": values, "add": {"parts": -1}, "where": filters}))?;
+        Ok(reply["changed"].as_i64().unwrap_or(0) == 1)
+    }
+
+    /// Remembers how many posts in a row the host refused for this call.
+    pub fn set_attempts(&self, session_id: &str, attempts: i64) -> Result<(), String> {
+        self.data("update", "calls", json!({"values": {"attempts": attempts}, "where": [eq("session_id", session_id)]})).map(|_| ())
     }
 
     pub fn delete_call(&self, session_id: &str) -> Result<(), String> {
@@ -251,6 +283,11 @@ fn parse_call(row: &Value) -> Call {
         speakers: int("speakers"),
         posted: int("posted"),
         parts: int("parts"),
+        channel_id: text("channel_id"),
+        attempts: int("attempts"),
+        claimed_from: int("claimed_from"),
+        claimed_to: int("claimed_to"),
+        claimed_ms: int("claimed_ms"),
     }
 }
 

@@ -15,11 +15,8 @@ import argparse
 import json
 import os
 import shutil
-import signal
-import socket
 import sqlite3
 import statistics
-import subprocess
 import sys
 import tempfile
 import threading
@@ -30,18 +27,14 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+import e2e_server  # noqa: E402
+
+REPO = e2e_server.REPO
 CAPABILITIES = ["data.store", "events", "log.read", "schedule", "message.post"]
 SHORT_SEASON = {"season_ticks": 200, "tick_ms": 150, "redraw_s": 2}
 MODULE = "undergrowth"
 # The reaction the e2e leaves, written as an escape so no literal emoji sits in the source.
 MUSHROOM = "\U0001F344"
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def uuid7():
@@ -50,43 +43,6 @@ def uuid7():
     raw[6] = 0x70 | (raw[6] & 0x0F)
     raw[8] = 0x80 | (raw[8] & 0x3F)
     return str(uuid.UUID(bytes=bytes(raw)))
-
-
-class Server:
-    def __init__(self, binary, workdir):
-        self.binary, self.workdir, self.port, self.proc = binary, workdir, free_port(), None
-        self.base = f"http://127.0.0.1:{self.port}"
-
-    def start(self):
-        env = {
-            **os.environ,
-            "SLIMM_PORT": str(self.port),
-            "SLIMM_DATABASE_PATH": str(self.workdir / "slimm.db"),
-            "SLIMM_ATTACHMENTS_DIR": str(self.workdir / "media"),
-            "SLIMM_MODULES_DIR": str(self.workdir / "modules"),
-            "SLIMM_DEV_MODULE_DIR": str(REPO),
-            "SLIMM_LIVEKIT_URL": "ws://127.0.0.1:1",
-            "SLIMM_LIVEKIT_API_KEY": "APIugtestkey",
-            "SLIMM_LIVEKIT_API_SECRET": "an-undergrowth-test-secret-of-32-chars",
-            "SLIMM_LOG": "info",
-        }
-        log = open(self.workdir / "server.log", "ab")
-        self.proc = subprocess.Popen([self.binary], env=env, stdout=log, stderr=log, cwd=self.workdir)
-        for _ in range(100):
-            try:
-                urllib.request.urlopen(f"{self.base}/healthz", timeout=1)
-                return
-            except OSError:
-                time.sleep(0.2)
-        raise SystemExit("the server did not come up; see server.log in " + str(self.workdir))
-
-    def stop(self):
-        if self.proc and self.proc.poll() is None:
-            self.proc.send_signal(signal.SIGTERM)
-            try:
-                self.proc.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
 
 
 def call(server, method, path, body=None, token=None):
@@ -232,7 +188,7 @@ def pct(values, p):
 
 def run(binary, keep):
     workdir = Path(tempfile.mkdtemp(prefix="undergrowth-e2e-", dir=os.environ.get("TMPDIR")))
-    server = Server(binary, workdir)
+    server = e2e_server.Server(binary, workdir, "APIugtestkey", "an-undergrowth-test-secret-of-32-chars")
     checks = Checks()
     try:
         server.start()

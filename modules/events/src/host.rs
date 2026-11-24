@@ -19,6 +19,11 @@ pub trait Host {
         self.call(&json!({"capability": "kv.store", "op": "delete", "key": key})).map(|_| ())
     }
 
+    fn keys(&self) -> Result<Vec<String>, String> {
+        let reply = self.call(&json!({"capability": "kv.store", "op": "list"}))?;
+        Ok(reply["keys"].as_array().map(|keys| keys.iter().filter_map(|k| k.as_str().map(str::to_owned)).collect()).unwrap_or_default())
+    }
+
     fn post(&self, content: &str) -> Result<(), String> {
         self.call(&json!({"capability": "message.post", "content": content})).map(|_| ())
     }
@@ -84,6 +89,7 @@ pub mod fake {
                     self.kv.borrow_mut().insert(key, value.to_owned());
                     Ok(json!({"ok": true}))
                 }
+                (Some("kv.store"), Some("list")) => Ok(json!({"ok": true, "keys": self.kv.borrow().keys().collect::<Vec<_>>()})),
                 (Some("kv.store"), Some("delete")) => {
                     self.kv.borrow_mut().remove(&key);
                     Ok(json!({"ok": true}))

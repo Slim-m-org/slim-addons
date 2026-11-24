@@ -169,8 +169,9 @@ fn parse_zone(word: &str) -> Result<i32, String> {
         _ => return Err(format!("{word} is not a zone; use utc, +02:00 or -05:00")),
     };
     let (h, m) = word[1..].split_once(':').unwrap_or((&word[1..], "0"));
-    match (h.parse::<i32>(), m.parse::<i32>()) {
-        (Ok(h), Ok(m)) if h <= 14 && m < 60 => Ok(sign * (h * 60 + m)),
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    match (digits(h).then(|| h.parse::<u32>()), digits(m).then(|| m.parse::<u32>())) {
+        (Some(Ok(h)), Some(Ok(m))) if h <= 14 && m < 60 => Ok(sign * (h * 60 + m) as i32),
         _ => Err(format!("{word} is not a zone; use utc, +02:00 or -05:00")),
     }
 }
@@ -217,7 +218,7 @@ mod tests {
     #[test]
     fn bad_times_say_what_is_wrong() {
         for bad in ["", "soon", "in", "in 0m", "in 5", "in 3x", "2026-02-30 10:00", "2026-13-01 10:00", "2026-12-05 25:00", "2026-12-05 13pm",
-            "2026-12-05 10:00 +15:00", "2026-12-05 10:00 est", "2026-12-05", "2026-12-05 10:00 utc extra", "in 9999d"] {
+            "2026-12-05 10:00 +15:00", "2026-12-05 20:00 +-5:30", "2026-12-05 20:00 +1:-30", "2026-12-05 20:00 +1:+30", "2026-12-05 20:00 +:30", "2026-12-05 10:00 est", "2026-12-05", "2026-12-05 10:00 utc extra", "in 9999d"] {
             assert!(parse_when(bad, NOW).is_err(), "{bad:?} should not parse");
         }
         assert_eq!(parse_when("2025-11-24 15:00", NOW).unwrap_err(), "that time has already passed");

@@ -272,6 +272,29 @@ fn calls_warm_the_soil_exactly_once_even_when_the_event_is_missed() {
 }
 
 #[test]
+fn a_bot_in_a_call_warms_nothing_and_earns_no_profile_entry() {
+    let host = FakeHost::default();
+    let bot = json!({"id": 1, "user_id": "music", "channel_id": "c", "joined_at_ms": 0, "left_at_ms": 30 * 60_000, "alone_ms": 0, "is_bot": true});
+    let member = json!({"id": 2, "user_id": "u1", "channel_id": "c", "joined_at_ms": 0, "left_at_ms": 20 * 60_000, "alone_ms": 0, "is_bot": false});
+    host.log.borrow_mut().extend([bot, member]);
+    call(&host, "almanac", "bot", "", T0, json!({"almanac": false}));
+    let warm: Vec<i64> = host.rows("inbox").iter().filter(|r| r["kind"] == "warm").map(|r| r["amount"].as_i64().unwrap()).collect();
+    assert_eq!(warm, vec![20]);
+    assert!(host.rows("feeders").iter().all(|r| r["user_id"] != "music"));
+}
+
+#[test]
+fn an_unlinked_member_who_fed_the_soil_has_no_profile_section() {
+    let host = FakeHost::default();
+    call(&host, "@event", "bot", &message("m1", "user-a", "hello"), T0, json!({}));
+    let ask = json!({"slot": "profile.section", "name": "grove", "user_ids": ["user-a"], "viewer_id": "v"});
+    let reply = call(&host, "@slot", "v", &ask.to_string(), T0, json!({}));
+    let slot: Value = serde_json::from_str(reply["output"].as_str().unwrap()).unwrap();
+    assert!(slot["items"].get("user-a").is_none(), "{slot}");
+    assert!(!host.rows("feeders").is_empty(), "the soil is still fed");
+}
+
+#[test]
 fn the_almanac_posts_once_a_day_and_tidies_old_rows() {
     let host = FakeHost::default();
     let day = 86_400_000;
@@ -416,4 +439,54 @@ fn the_season_end_claim_fixes_the_standings_the_herald_posts() {
     assert_eq!(row()["standings"], claimed, "a frame that lost the race writes nothing over the final standings");
     let posted = call(&host, "herald", "bot", &game_id, now + 10_000, json!({}));
     assert!(!posted["output"].as_str().unwrap().contains("Late Frame"), "{posted}");
+}
+
+#[test]
+fn a_flood_of_reactions_and_moves_leaves_a_bounded_number_of_rows() {
+    use crate::store::{Store, KEEP_ROWS};
+    let host = FakeHost::default();
+    let reaction = |i: u32| {
+        json!({"event": "reaction.changed", "id": format!("r{i}"), "at_ms": T0, "data": {"message_id": format!("m{i}"), "count": 1}}).to_string()
+    };
+    let total = KEEP_ROWS as u32 + 1500;
+    for i in 0..total {
+        host.next_run();
+        let req = json!({"command": "@event", "input": reaction(i), "caller": {"id": "bot"}, "now_ms": T0});
+        crate::handle(&host, req.to_string().as_bytes());
+    }
+    let store = Store::new(&host);
+    let mv = Move { pid: "p".into(), act: "burst".into(), arg: String::new() };
+    for _ in 0..total {
+        host.next_run();
+        store.log_move("g", &mv, T0).unwrap();
+    }
+    let ceiling = KEEP_ROWS as usize + 250;
+    assert!(host.rows("inbox").len() <= ceiling, "inbox kept {}", host.rows("inbox").len());
+    assert!(host.rows("moves").len() <= ceiling, "moves kept {}", host.rows("moves").len());
+    assert!(host.rows("inbox").len() >= KEEP_ROWS as usize, "the newest rows must stay");
+}
+
+/// A host where another run redeems the same link code between this run's read and its delete.
+struct RacingHost<'a> {
+    inner: &'a FakeHost,
+}
+
+impl crate::host::Host for RacingHost<'_> {
+    fn call(&self, request: &Value) -> Result<Value, String> {
+        let reply = self.inner.call(request)?;
+        if request["op"] == "get" && request["table"] == "links" {
+            let rival = json!({"capability": "data.store", "op": "delete", "table": "links", "where": request["where"]});
+            self.inner.call(&rival)?;
+        }
+        Ok(reply)
+    }
+}
+
+#[test]
+fn a_link_code_a_second_run_redeemed_meanwhile_links_nothing() {
+    let host = FakeHost::default();
+    Store::new(&host).add_link("ug-abcdef", "pid-1", T0).unwrap();
+    host.next_run();
+    let racing = RacingHost { inner: &host };
+    assert_eq!(Store::new(&racing).take_link("ug-abcdef", T0 + 1).unwrap(), None);
 }

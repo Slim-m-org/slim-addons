@@ -9,19 +9,24 @@ use crate::settings::Settings;
 /// A run may post at most three times, so it stops there and the next run takes the rest.
 const PER_RUN: i64 = 3;
 const KEEP_MS: i64 = 30 * 86_400_000;
-const PRUNE_PER_RUN: i64 = 2;
+const PRUNE_PER_RUN: i64 = 10;
 
 pub fn post<H: Host>(host: &H, content: &str) -> Result<(), String> {
     host.call(&json!({"capability": "message.post", "content": content})).map(|_| ())
 }
 
-/// A refused post is reported, not failed: a run that errors counts toward disabling the module.
-/// A night is claimed before its post so two runs cannot both send it, and given back when it did not go out.
+/// A refused post is reported and the night stays claimed, not retried: a run that errors counts toward disabling the module.
+/// A night is claimed before its post so two runs cannot both send it, and given back only when its tally could not be read.
 pub fn run<H: Host>(host: &H, settings: &Settings, now_ms: i64) -> Result<String, String> {
     let store = Store::new(host);
     let mut sent = 0;
     let mut problem = None;
-    for night in store.due(now_ms, PER_RUN)? {
+    let mut unreadable = None;
+    let mut skip: Vec<String> = Vec::new();
+    for _ in 0..PER_RUN {
+        let limit = PER_RUN + skip.len() as i64;
+        let Some(night) = store.due(now_ms, limit)?.into_iter().find(|n| !skip.contains(&n.id)) else { break };
+        skip.push(night.id.clone());
         if !store.claim_reminder(&night.id)? {
             continue;
         }
@@ -33,18 +38,20 @@ pub fn run<H: Host>(host: &H, settings: &Settings, now_ms: i64) -> Result<String
             Ok(text) => text,
             Err(why) => {
                 store.release_reminder(&night.id)?;
-                return Err(why);
+                unreadable = Some(why);
+                continue;
             }
         };
         match post(host, &text) {
             Ok(()) => sent += 1,
-            Err(why) => {
-                store.release_reminder(&night.id)?;
-                problem = Some(why);
-            }
+            Err(why) => problem = Some(why),
         }
     }
+    store.sweep_over(&[], now_ms)?;
     store.prune(now_ms - KEEP_MS, PRUNE_PER_RUN)?;
+    if let Some(why) = unreadable {
+        return Err(why);
+    }
     Ok(match problem {
         Some(why) => format!("Reminded {sent}; a post was refused ({why})."),
         None => format!("Reminded {sent}."),
@@ -118,16 +125,67 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_post_leaves_the_reminder_for_the_next_run() {
+    fn a_refused_post_is_reported_and_not_retried() {
         let host = FakeHost::default();
         *host.refuse_post.borrow_mut() = Some("message.post rate limit reached".to_string());
         let first = tick(&host).unwrap();
         assert!(first.starts_with("Reminded 0; a post was refused"), "{first}");
-        assert!(!host.reminded.get(), "the night stayed claimed, so no later run could send it");
+        assert!(host.reminded.get(), "a refused night is handled, so it cannot starve the ones behind it");
 
         *host.refuse_post.borrow_mut() = None;
-        assert_eq!(tick(&host).unwrap(), "Reminded 1.");
-        assert_eq!(*host.posted.borrow(), ["Valorant starts in 30 min - 2 in, 2 maybe."]);
+        assert_eq!(tick(&host).unwrap(), "Reminded 0.");
+        assert!(host.posted.borrow().is_empty());
+    }
+
+    /// Several chosen nights in due order; a night whose game is "BAD" has its post refused.
+    struct ManyHost {
+        reminded: RefCell<Vec<bool>>,
+        games: Vec<&'static str>,
+        posted: RefCell<Vec<String>>,
+    }
+
+    impl Host for ManyHost {
+        fn call(&self, request: &Value) -> Result<Value, String> {
+            if request["capability"] == "message.post" {
+                let content = request["content"].as_str().unwrap_or_default().to_string();
+                if content.contains("BAD") {
+                    return Err("content contains hidden characters".to_string());
+                }
+                self.posted.borrow_mut().push(content);
+                return Ok(json!({"ok": true}));
+            }
+            let slots = json!([{"l": "fri 8pm", "t": NOW + 30 * 60_000}]).to_string();
+            match request["op"].as_str() {
+                Some("query") if request["table"] == "nights" && request["where"][1]["col"] == "reminded" => {
+                    let limit = request["limit"].as_i64().unwrap_or(0) as usize;
+                    let rows: Vec<Value> = (0..self.games.len()).filter(|i| !self.reminded.borrow()[*i]).take(limit).map(|i| {
+                        json!({"night_id": format!("n{i}"), "game": self.games[i], "role": "", "host": "a1", "slots": slots, "chosen": 0, "remind_at": NOW, "created": NOW})
+                    }).collect();
+                    Ok(json!({"ok": true, "rows": rows}))
+                }
+                Some("update") => {
+                    let id = request["where"][0]["val"].as_str().unwrap_or_default();
+                    let index: usize = id.trim_start_matches('n').parse().unwrap();
+                    let want = request["where"][1]["val"].as_bool().unwrap();
+                    let changed = self.reminded.borrow()[index] == want;
+                    if changed {
+                        self.reminded.borrow_mut()[index] = request["values"]["reminded"].as_bool().unwrap();
+                    }
+                    Ok(json!({"ok": true, "changed": i64::from(changed)}))
+                }
+                Some("count") => Ok(json!({"ok": true, "count": 0})),
+                _ => Ok(json!({"ok": true, "rows": []})),
+            }
+        }
+    }
+
+    #[test]
+    fn refused_nights_do_not_block_the_ones_behind_them() {
+        let host = ManyHost { reminded: RefCell::new(vec![false; 5]), games: vec!["BAD1", "BAD2", "BAD3", "Chess", "Go"], posted: RefCell::new(vec![]) };
+        let first = run(&host, &Settings::from_value(&Value::Null), NOW).unwrap();
+        assert!(first.starts_with("Reminded 0; a post was refused"), "{first}");
+        assert_eq!(run(&host, &Settings::from_value(&Value::Null), NOW).unwrap(), "Reminded 2.");
+        assert_eq!(host.posted.borrow().len(), 2);
     }
 
     #[test]

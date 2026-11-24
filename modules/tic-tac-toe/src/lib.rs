@@ -3,11 +3,16 @@
 //!
 //! Conforms to slim's module ABI v1 (see the deployment's
 //! docs/modules/building-modules.md): exports `memory`, `alloc(len) -> ptr`
-//! and `run(in_ptr, in_len) -> packed(out_ptr, out_len)`, and imports nothing.
+//! and `run(in_ptr, in_len) -> packed(out_ptr, out_len)`, and imports only `slim.host_call`, for
+//! the game record's `data.store`.
 //! It never traps on bad input; it always answers with
 //! `{"ok":true,"output":...}` or `{"ok":false,"error":...}`.
 
+#[cfg(test)]
+mod fake;
 mod game;
+mod held;
+mod host;
 mod seats;
 
 use std::alloc::{alloc as std_alloc, Layout};
@@ -20,6 +25,9 @@ struct Request {
     input: String,
     #[serde(default)]
     caller: Caller,
+    /// The host's clock when the run started; absent from a host that predates it.
+    #[serde(default)]
+    now_ms: i64,
 }
 
 #[derive(Deserialize, Default)]
@@ -53,7 +61,7 @@ pub extern "C" fn alloc(len: i32) -> i32 {
 #[no_mangle]
 pub extern "C" fn run(in_ptr: i32, in_len: i32) -> i64 {
     let request = unsafe { std::slice::from_raw_parts(in_ptr as *const u8, in_len as usize) };
-    let body = handle(request);
+    let body = handle(&host::SlimHost, request);
 
     let out_len = body.len();
     let out_ptr = if out_len == 0 {
@@ -68,14 +76,14 @@ pub extern "C" fn run(in_ptr: i32, in_len: i32) -> i64 {
     packed as i64
 }
 
-fn handle(request: &[u8]) -> Vec<u8> {
+fn handle<H: host::Host>(host: &H, request: &[u8]) -> Vec<u8> {
     let parsed: Result<Request, _> = serde_json::from_slice(request);
     let parsed = match parsed {
         Ok(req) => req,
         Err(err) => return serialize_err(format!("invalid request: {err}")),
     };
 
-    match game::apply(&parsed.command, &parsed.input, &parsed.caller.id) {
+    match game::apply(host, &parsed.command, &parsed.input, &parsed.caller.id, parsed.now_ms) {
         Ok(output) => serialize_ok(output),
         Err(message) => serialize_err(message),
     }

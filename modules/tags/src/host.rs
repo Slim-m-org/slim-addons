@@ -6,6 +6,7 @@ pub trait Host {
     fn get(&self, key: &str) -> Result<Option<String>, KvError>;
     fn set(&self, key: &str, value: &str) -> Result<(), KvError>;
     fn delete(&self, key: &str) -> Result<(), KvError>;
+    fn keys(&self) -> Result<Vec<String>, KvError>;
     fn post(&self, content: &str) -> Result<(), PostError>;
 }
 
@@ -103,6 +104,11 @@ impl Host for SlimHost {
 
     fn delete(&self, key: &str) -> Result<(), KvError> {
         kv_call(serde_json::json!({"capability": "kv.store", "op": "delete", "key": key})).map(|_| ())
+    }
+
+    fn keys(&self) -> Result<Vec<String>, KvError> {
+        let reply = kv_call(serde_json::json!({"capability": "kv.store", "op": "list"}))?;
+        Ok(reply["keys"].as_array().map(|keys| keys.iter().filter_map(|k| k.as_str().map(str::to_string)).collect()).unwrap_or_default())
     }
 
     fn post(&self, content: &str) -> Result<(), PostError> {

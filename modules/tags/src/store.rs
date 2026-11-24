@@ -1,22 +1,20 @@
 //! The tag set over `kv.store`.
 //!
-//! Layout: one key per tag (`t:<name>`, value is the text) plus one index key
-//! (`i`, newline-joined sorted names). Listing is one read whatever the size,
-//! and a single tag is one read. The tag key is the truth; the index only
-//! feeds listing and the count, so an index that fell behind a crash never
-//! hides a tag from `/tag name`.
+//! Layout: one key per tag (`t:<name>`, value is the text). The names are the
+//! store's own key listing, so there is no shared index for two overlapping
+//! runs to overwrite, and a tag can never exist without being listed.
 
-use crate::host::{Host, KvError};
+use crate::host::Host;
 use crate::name;
 
 pub const MAX_TAGS: usize = 40;
 pub const MAX_CHARS: usize = 1000;
-/// With 40 tags and the index this stays under kv.store's 64 KiB total, with room to spare.
+/// With 40 tags this stays under kv.store's 64 KiB total, with room to spare.
 pub const MAX_BYTES: usize = 1500;
-const INDEX: &str = "i";
+const PREFIX: &str = "t:";
 
 fn key(name: &str) -> String {
-    format!("t:{name}")
+    format!("{PREFIX}{name}")
 }
 
 pub struct Tags<'a, H: Host> {
@@ -29,8 +27,9 @@ impl<'a, H: Host> Tags<'a, H> {
     }
 
     pub fn names(&self) -> Result<Vec<String>, String> {
-        let index = self.host.get(INDEX).map_err(|e| e.text())?;
-        Ok(index.unwrap_or_default().lines().filter(|l| !l.is_empty()).map(str::to_string).collect())
+        let mut names: Vec<String> = self.host.keys().map_err(|e| e.text())?.iter().filter_map(|k| k.strip_prefix(PREFIX)).map(str::to_string).collect();
+        names.sort();
+        Ok(names)
     }
 
     pub fn get(&self, name: &str) -> Result<Option<String>, String> {
@@ -42,13 +41,10 @@ impl<'a, H: Host> Tags<'a, H> {
         if self.get(name)?.is_some() {
             return Err(format!("A tag named {name} already exists. Use /tagedit to change it."));
         }
-        let mut names = self.names()?;
-        if names.len() >= MAX_TAGS {
+        if self.names()?.len() >= MAX_TAGS {
             return Err(format!("This space has {MAX_TAGS} tags, which is the limit. Remove one first."));
         }
-        self.host.set(&key(name), &text).map_err(|e| e.text())?;
-        names.push(name.to_string());
-        self.write_index(names)
+        self.host.set(&key(name), &text).map_err(|e| e.text())
     }
 
     pub fn edit(&self, name: &str, text: &str) -> Result<(), String> {
@@ -60,15 +56,10 @@ impl<'a, H: Host> Tags<'a, H> {
     }
 
     pub fn remove(&self, name: &str) -> Result<(), String> {
-        let stored = self.get(name)?.is_some();
-        let mut names = self.names()?;
-        let indexed = names.iter().any(|n| n == name);
-        if !stored && !indexed {
-            return Err(self.unknown_in(name, &names));
+        if self.get(name)?.is_none() {
+            return Err(self.unknown(name));
         }
-        self.host.delete(&key(name)).map_err(|e| e.text())?;
-        names.retain(|n| n != name);
-        self.write_index(names)
+        self.host.delete(&key(name)).map_err(|e| e.text())
     }
 
     /// The error for a name nobody has, with close names when there are any.
@@ -88,11 +79,6 @@ impl<'a, H: Host> Tags<'a, H> {
         }
     }
 
-    fn write_index(&self, mut names: Vec<String>) -> Result<(), String> {
-        names.sort();
-        names.dedup();
-        self.host.set(INDEX, &names.join("\n")).map_err(|e: KvError| e.text())
-    }
 }
 
 /// Trimmed text that fits both the character limit people see and the byte limit storage needs.
@@ -124,7 +110,7 @@ mod tests {
         tags.add("faq", "Ask in #help.").unwrap();
         assert_eq!(tags.get("rules").unwrap(), Some("Be kind.".to_string()));
         assert_eq!(tags.names().unwrap(), ["faq", "rules"]);
-        assert_eq!(host.map.borrow().keys().cloned().collect::<Vec<_>>(), ["i", "t:faq", "t:rules"]);
+        assert_eq!(host.map.borrow().keys().cloned().collect::<Vec<_>>(), ["t:faq", "t:rules"]);
     }
 
     #[test]
@@ -150,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_drops_the_tag_and_its_index_entry() {
+    fn remove_drops_the_tag() {
         let host = FakeHost::default();
         let tags = Tags::new(&host);
         tags.add("a", "1").unwrap();
@@ -162,19 +148,20 @@ mod tests {
     }
 
     #[test]
-    fn a_dangling_index_entry_can_still_be_removed() {
+    fn a_tag_stored_by_an_overlapping_run_is_listed_and_counted() {
         let host = FakeHost::default();
-        host.map.borrow_mut().insert("i".into(), "ghost".into());
         let tags = Tags::new(&host);
-        tags.remove("ghost").unwrap();
-        assert!(tags.names().unwrap().is_empty());
-    }
-
-    #[test]
-    fn a_tag_missing_from_the_index_is_still_found() {
-        let host = FakeHost::default();
+        tags.add("a", "1").unwrap();
         host.map.borrow_mut().insert("t:lost".into(), "text".into());
-        assert_eq!(Tags::new(&host).get("lost").unwrap(), Some("text".to_string()));
+        assert_eq!(tags.get("lost").unwrap(), Some("text".to_string()));
+        assert_eq!(tags.names().unwrap(), ["a", "lost"]);
+        for i in 0..MAX_TAGS - 2 {
+            tags.add(&format!("t{i}"), "x").unwrap();
+            host.next_run();
+        }
+        assert!(tags.add("one-more", "x").unwrap_err().contains("limit"));
+        tags.remove("lost").unwrap();
+        assert!(!tags.names().unwrap().contains(&"lost".to_string()));
     }
 
     #[test]
@@ -220,10 +207,10 @@ mod tests {
             f();
             host.calls.get()
         };
-        assert_eq!(calls(&|| tags.add("a", "1").unwrap()), 4);
+        assert_eq!(calls(&|| tags.add("a", "1").unwrap()), 3);
         assert_eq!(calls(&|| tags.edit("a", "2").unwrap()), 2);
         assert_eq!(calls(&|| drop(tags.names().unwrap())), 1);
-        assert_eq!(calls(&|| tags.remove("a").unwrap()), 4);
+        assert_eq!(calls(&|| tags.remove("a").unwrap()), 2);
     }
 
     #[test]

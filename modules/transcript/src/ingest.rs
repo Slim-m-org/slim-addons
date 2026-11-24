@@ -15,14 +15,14 @@ const MAX_LINE_CHARS: usize = 1_000;
 /// Longest a speaker name may be in a transcript; the host's own limit is shorter, so this only guards a bad sender.
 const MAX_NAME_CHARS: usize = 80;
 
-pub fn on_event<H: Host>(store: &Store<H>, settings: &Settings, input: &str) -> Result<String, String> {
+pub fn on_event<H: Host>(store: &Store<H>, settings: &Settings, (input, now_ms): (&str, i64)) -> Result<String, String> {
     let event: Value = serde_json::from_str(input).map_err(|_| "the event was not JSON".to_string())?;
     let data = &event["data"];
     match event["event"].as_str() {
         Some("call.audio.started") => started(store, data),
         Some("call.audio.participant") => participant(store, data),
         Some("call.audio.segment") => segment(store, data, event["id"].as_str().unwrap_or("")),
-        Some("call.audio.stopped") => stopped(store, settings, data),
+        Some("call.audio.stopped") => stopped(store, settings, data, now_ms),
         _ => Ok("Ignored.".to_string()),
     }
 }
@@ -31,7 +31,8 @@ fn started<H: Host>(store: &Store<H>, data: &Value) -> Result<String, String> {
     let (Some(session), Some(at)) = (data["session_id"].as_str(), data["started_at_ms"].as_i64()) else {
         return Err("the started event had no session or time".to_string());
     };
-    if !store.insert_call(session, at)? {
+    let channel = data["channel_id"].as_str().unwrap_or("");
+    if !store.insert_call((session, channel), at)? {
         return Ok("Already started.".to_string());
     }
     let names = &data["names"];
@@ -95,7 +96,7 @@ fn segment<H: Host>(store: &Store<H>, data: &Value, event_id: &str) -> Result<St
     Ok("Kept.".to_string())
 }
 
-fn stopped<H: Host>(store: &Store<H>, settings: &Settings, data: &Value) -> Result<String, String> {
+fn stopped<H: Host>(store: &Store<H>, settings: &Settings, data: &Value, now_ms: i64) -> Result<String, String> {
     let (Some(session), Some(at)) = (data["session_id"].as_str(), data["stopped_at_ms"].as_i64()) else {
         return Err("the stopped event had no session or time".to_string());
     };
@@ -113,16 +114,16 @@ fn stopped<H: Host>(store: &Store<H>, settings: &Settings, data: &Value) -> Resu
         return Ok("Declined, so nothing is kept.".to_string());
     }
     let call = store.call(session)?.unwrap_or(call);
-    end_call(store, settings, &call)
+    end_call(store, settings, &call, now_ms)
 }
 
 /// Posts a call that just ended, or drops it quietly when nobody was heard.
-pub fn end_call<H: Host>(store: &Store<H>, settings: &Settings, call: &crate::store::Call) -> Result<String, String> {
+pub fn end_call<H: Host>(store: &Store<H>, settings: &Settings, call: &crate::store::Call, now_ms: i64) -> Result<String, String> {
     if call.seen == 0 {
         store.move_call(&call.session_id, ("done", "posted"), serde_json::json!({}))?;
         return Ok("Nobody was heard, so nothing is posted.".to_string());
     }
-    let outcome = post::post_pending(store, settings, call)?;
+    let outcome = post::post_pending(store, settings, call, now_ms)?;
     Ok(match outcome.waiting {
         Some(why) => format!("Posted {}; waiting: {why}.", outcome.messages),
         None => format!("Posted {}.", outcome.messages),
