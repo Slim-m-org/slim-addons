@@ -188,11 +188,14 @@ impl<'a, H: Host> Store<'a, H> {
         self.data(json!({"op": "insert", "table": "links", "values": {"code": code, "pid": pid, "at_ms": now_ms}})).map(|_| ())
     }
 
-    /// The player a fresh link code names, used up as it is read.
+    /// The player a fresh link code names, used up as it is read; only the run whose delete removed the row gets it.
     pub fn take_link(&self, code: &str, now_ms: i64) -> Result<Option<String>, String> {
         let reply = self.data(json!({"op": "get", "table": "links", "where": [cond("code", "eq", json!(code))]}))?;
         let Some(row) = Self::rows(&reply).into_iter().next() else { return Ok(None) };
-        self.data(json!({"op": "delete", "table": "links", "where": [cond("code", "eq", json!(code))]}))?;
+        let used = self.data(json!({"op": "delete", "table": "links", "where": [cond("code", "eq", json!(code))]}))?;
+        if used["changed"].as_i64() != Some(1) {
+            return Ok(None);
+        }
         let fresh = now_ms - row["at_ms"].as_i64().unwrap_or(0) <= crate::LINK_TTL_MS;
         Ok(fresh.then(|| row["pid"].as_str().unwrap_or("").to_owned()))
     }
