@@ -19,7 +19,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/game-night/0.1.2/module.wasm",
-    "sha256": "7f4368bf73c6360462bc829bd6f368c22b3f8ca4e5003233a694c7674ff4bda8"
+    "sha256": "0efb9cc6678dd8292e0b5002dcce9cfddb0f2ada1fd2006eea3ba70f24004d62"
   },
   "permissions": [
     {
@@ -173,7 +173,8 @@
     {
       "version": "0.1.2",
       "changes": [
-        "A member can have at most three game nights going, and the server at most fifty, so one member cannot fill the module's storage. Finished and cancelled nights are cleared first."
+        "A member can have at most three game nights going, and the server at most fifty, so one member cannot fill the module's storage. Finished and cancelled nights are cleared first.",
+        "Game names and roles lose mentions and hidden characters, and a reminder the host refuses no longer holds up the other nights."
       ]
     },
     {

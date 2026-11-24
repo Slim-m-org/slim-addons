@@ -9,7 +9,8 @@
     {
       "version": "0.1.1",
       "changes": [
-        "Two members planning an event at the same moment no longer lose one of them, and an event whose data cannot be read is cleared instead of lingering."
+        "Two members planning an event at the same moment no longer lose one of them, and an event whose data cannot be read is cleared instead of lingering.",
+        "Titles and places with hidden characters no longer make a reminder fail, a reminder the host refuses is not retried, long names in other scripts no longer overfill an event, and time zones with a negative part are refused."
       ]
     },
     {
@@ -33,7 +34,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/events/0.1.1/module.wasm",
-    "sha256": "4ec26c910b87abbbe2cec79281d7149281686f5f0f2bf54280e05de8be59cf3c"
+    "sha256": "eb3a0b076d32fe7802b780811e4f15fc1ab858cf7414dfb0ef76910e66a7327a"
   },
   "permissions": [
     {

@@ -222,13 +222,22 @@ fn a_reminder_mentions_at_most_eight_and_counts_the_rest() {
 }
 
 #[test]
-fn a_reminder_that_cannot_be_posted_is_not_marked_sent() {
+fn a_refused_reminder_is_reported_ok_and_not_retried_so_it_cannot_trip_the_breaker() {
     let host = FakeHost { refuse_posts: true, ..FakeHost::default() };
     let id = plan(&host, "in 5h");
-    let failed = call(&host, "tick", &id, "bot", NOW + 4 * HOUR);
-    assert_eq!(failed["ok"], false);
-    assert!(failed["error"].as_str().unwrap().contains("could not post the reminder"));
-    assert!(!stored(&host, &id).r);
+    let refused = call(&host, "tick", &id, "bot", NOW + 4 * HOUR);
+    assert_eq!(refused["ok"], true, "{refused}");
+    assert!(refused["output"].as_str().unwrap().contains("refused"));
+    assert!(stored(&host, &id).r);
+    assert_eq!(call(&host, "tick", &id, "bot", NOW + 4 * HOUR)["output"], "Nothing to remind.");
+}
+
+#[test]
+fn a_title_with_hidden_characters_is_planned_without_them() {
+    let host = FakeHost::default();
+    let answer = call(&host, "event", "Game\u{200B} night\u{202E} | in 5h | Voice", "host-1", NOW);
+    let id = scene(&answer)["state"].as_str().unwrap().to_owned();
+    assert_eq!(stored(&host, &id).t, "Game night");
 }
 
 #[test]
