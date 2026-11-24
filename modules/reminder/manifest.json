@@ -2,10 +2,16 @@
   "schema": 1,
   "id": "reminder",
   "name": "Reminder",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time.",
   "description": "/remind 30m take the bread out sets a reminder for 30 minutes from now (m for minutes, h for hours, d for days, from one minute to 30 days). /reminders lists what is waiting and /unremind 2 cancels one by its number. When one comes due, Reminder posts it in the channel an admin picked, as Reminder, within about five minutes. Up to 20 reminders can wait in a space, each up to 200 characters, shared by everyone. It uses kv.store to remember them, schedule to check every five minutes for what is due, and message.post to say it in the channel: an admin approves each when installing, and picks the channel the reminders go to. It reads the host's clock (now_ms), so it needs a slim that provides one.",
   "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "Two reminders set at the same moment are both kept, and every reminder stored is listed and can be cancelled."
+      ]
+    },
     {
       "version": "0.1.1",
       "changes": [
@@ -31,8 +37,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/reminder/0.1.1/module.wasm",
-    "sha256": "95021c76efaeb9d57bdf88e55f2f10c60f3f715597df3ae9470b8859e2b9a7cc"
+    "path": "modules/reminder/0.1.2/module.wasm",
+    "sha256": "da2402a0bb514c38d4a3f3bdb18f8a7e05c4acb7d257de4f8d026bc0ae3e5e3e"
   },
   "permissions": [
     {

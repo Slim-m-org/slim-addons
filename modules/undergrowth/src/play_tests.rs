@@ -417,3 +417,28 @@ fn the_season_end_claim_fixes_the_standings_the_herald_posts() {
     let posted = call(&host, "herald", "bot", &game_id, now + 10_000, json!({}));
     assert!(!posted["output"].as_str().unwrap().contains("Late Frame"), "{posted}");
 }
+
+/// A host where another run redeems the same link code between this run's read and its delete.
+struct RacingHost<'a> {
+    inner: &'a FakeHost,
+}
+
+impl crate::host::Host for RacingHost<'_> {
+    fn call(&self, request: &Value) -> Result<Value, String> {
+        let reply = self.inner.call(request)?;
+        if request["op"] == "get" && request["table"] == "links" {
+            let rival = json!({"capability": "data.store", "op": "delete", "table": "links", "where": request["where"]});
+            self.inner.call(&rival)?;
+        }
+        Ok(reply)
+    }
+}
+
+#[test]
+fn a_link_code_a_second_run_redeemed_meanwhile_links_nothing() {
+    let host = FakeHost::default();
+    Store::new(&host).add_link("ug-abcdef", "pid-1", T0).unwrap();
+    host.next_run();
+    let racing = RacingHost { inner: &host };
+    assert_eq!(Store::new(&racing).take_link("ug-abcdef", T0 + 1).unwrap(), None);
+}

@@ -314,3 +314,30 @@ fn the_host_and_older_servers_are_handled_without_trapping() {
     let nobody = call(&host, "event", "Game | in 2h", "", NOW);
     assert_eq!(nobody["ok"], false);
 }
+
+#[test]
+fn an_event_no_index_names_is_listed_counted_and_pruned() {
+    let host = FakeHost::default();
+    let id = plan(&host, "in 2h");
+    let mut lost = stored(&host, &id);
+    lost.n = 7;
+    store::save(&host, "racer", &lost).unwrap();
+    assert_eq!(store::all(&host).unwrap().len(), 2);
+    let listed = call(&host, "event-admin", "list", "bot", NOW);
+    assert!(listed["output"].as_str().unwrap().contains("#7"), "{listed}");
+    for i in 0..store::MAX_EVENTS - 2 {
+        store::save(&host, &format!("filler{i}"), &lost).unwrap();
+    }
+    let full = call(&host, "event", "One more | in 2h", "h", NOW);
+    assert!(full["error"].as_str().unwrap().contains("already planned"), "{full}");
+    assert_eq!(call(&host, "tick", "", "bot", NOW + 3 * DAY)["output"], format!("Removed {} finished events.", store::MAX_EVENTS));
+    assert!(host.kv.borrow().is_empty());
+}
+
+#[test]
+fn an_event_that_no_longer_parses_is_deleted_when_pruned() {
+    let host = FakeHost::default();
+    host.kv.borrow_mut().insert("e:broken".into(), "{not json".into());
+    assert_eq!(store::prune(&host, NOW).unwrap(), 1);
+    assert!(host.kv.borrow().is_empty());
+}
