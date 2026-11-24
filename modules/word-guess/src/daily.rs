@@ -73,6 +73,11 @@ impl<'a, H: Host> Plays<'a, H> {
         self.save_key(&format!("{day}|{player}"), day, player, stored)
     }
 
+    /// Stores `to` only while the row still holds `from`; false when another run got there first.
+    pub fn advance(&self, day: i64, player: &str, from: &Stored, to: &Stored) -> Result<bool, String> {
+        self.advance_key(&format!("{day}|{player}"), day, player, (from, to))
+    }
+
     /// The player's one practice board, kept beside the daily ones under a day that no date can be.
     pub fn load_practice(&self, player: &str) -> Result<Stored, String> {
         self.load_key(&format!("p|{player}"))
@@ -80,6 +85,11 @@ impl<'a, H: Host> Plays<'a, H> {
 
     pub fn save_practice(&self, player: &str, stored: &Stored) -> Result<(), String> {
         self.save_key(&format!("p|{player}"), PRACTICE_DAY, player, stored)
+    }
+
+    /// Like [`Plays::advance`], for the player's practice board.
+    pub fn advance_practice(&self, player: &str, from: &Stored, to: &Stored) -> Result<bool, String> {
+        self.advance_key(&format!("p|{player}"), PRACTICE_DAY, player, (from, to))
     }
 
     fn load_key(&self, key: &str) -> Result<Stored, String> {
@@ -93,12 +103,33 @@ impl<'a, H: Host> Plays<'a, H> {
         })
     }
 
-    fn save_key(&self, key: &str, day: i64, player: &str, stored: &Stored) -> Result<(), String> {
-        let values = json!({
+    fn row_values(key: &str, day: i64, player: &str, stored: &Stored) -> Value {
+        json!({
             "k": key, "day": day, "player": player, "guesses": stored.guesses.join(","),
             "done": i64::from(stored.done), "won": i64::from(stored.won), "seed": stored.seed as i64,
-        });
-        self.data("upsert", json!({"values": values, "on": "k"})).map(|_| ())
+        })
+    }
+
+    fn save_key(&self, key: &str, day: i64, player: &str, stored: &Stored) -> Result<(), String> {
+        self.data("upsert", json!({"values": Self::row_values(key, day, player, stored), "on": "k"})).map(|_| ())
+    }
+
+    /// A compare-and-swap on the guesses the caller read: the update matches only an unchanged row, and a first guess is an insert the unique `k` refuses to repeat.
+    fn advance_key(&self, key: &str, day: i64, player: &str, (from, to): (&Stored, &Stored)) -> Result<bool, String> {
+        let values = Self::row_values(key, day, player, to);
+        let unchanged = json!([{"col": "k", "op": "eq", "val": key}, {"col": "guesses", "op": "eq", "val": from.guesses.join(",")}]);
+        let swapped = self.data("update", json!({"values": values, "where": unchanged}))?;
+        if swapped["changed"].as_i64() == Some(1) {
+            return Ok(true);
+        }
+        if !from.guesses.is_empty() {
+            return Ok(false);
+        }
+        match self.data("insert", json!({"values": values})) {
+            Ok(_) => Ok(true),
+            Err(why) if why.contains("unique column") => Ok(false),
+            Err(why) => Err(why),
+        }
     }
 
     /// Days in a row the player won, counting back from today, or from yesterday while today is still open.

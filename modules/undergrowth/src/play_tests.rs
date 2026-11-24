@@ -442,3 +442,28 @@ fn a_flood_of_reactions_and_moves_leaves_a_bounded_number_of_rows() {
     assert!(host.rows("moves").len() <= ceiling, "moves kept {}", host.rows("moves").len());
     assert!(host.rows("inbox").len() >= KEEP_ROWS as usize, "the newest rows must stay");
 }
+
+/// A host where another run redeems the same link code between this run's read and its delete.
+struct RacingHost<'a> {
+    inner: &'a FakeHost,
+}
+
+impl crate::host::Host for RacingHost<'_> {
+    fn call(&self, request: &Value) -> Result<Value, String> {
+        let reply = self.inner.call(request)?;
+        if request["op"] == "get" && request["table"] == "links" {
+            let rival = json!({"capability": "data.store", "op": "delete", "table": "links", "where": request["where"]});
+            self.inner.call(&rival)?;
+        }
+        Ok(reply)
+    }
+}
+
+#[test]
+fn a_link_code_a_second_run_redeemed_meanwhile_links_nothing() {
+    let host = FakeHost::default();
+    Store::new(&host).add_link("ug-abcdef", "pid-1", T0).unwrap();
+    host.next_run();
+    let racing = RacingHost { inner: &host };
+    assert_eq!(Store::new(&racing).take_link("ug-abcdef", T0 + 1).unwrap(), None);
+}

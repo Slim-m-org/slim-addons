@@ -19,7 +19,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/undergrowth/0.1.1/module.wasm",
-    "sha256": "073251b8602f46f33bdc21b4ca8387767455cc282b2c83a333afaeaf16aa48bf"
+    "sha256": "5ce1621d2ddb0e3cf1886d2a5358542ab41eb65b0dd8fa34462f2132f8951b78"
   },
   "permissions": [
     {
@@ -369,7 +369,8 @@
     {
       "version": "0.1.1",
       "changes": [
-        "Reactions, messages and presses no longer pile up without limit: only the newest rows of the move log and the weather inbox are kept."
+        "Reactions, messages and presses no longer pile up without limit: only the newest rows of the move log and the weather inbox are kept.",
+        "A profile link code can be used only once, even when two messages carry it at the same moment."
       ]
     },
     {

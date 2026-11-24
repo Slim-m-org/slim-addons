@@ -155,6 +155,10 @@ fn kv(host: &mut Host, request: &str) -> String {
             host.kv.remove(&key);
             "{\"ok\":true}".to_owned()
         }
+        (Some("list"), _, _) => {
+            let keys: Vec<String> = host.kv.keys().map(|k| format!("\"{}\"", crate::escape(k))).collect();
+            format!("{{\"ok\":true,\"keys\":[{}]}}", keys.join(","))
+        }
         _ => refusal("malformed kv.store request"),
     }
 }
@@ -255,6 +259,14 @@ mod tests {
             call(&mut host, r#"{"capability":"message.post","content":"again"}"#);
         }
         assert!(call(&mut host, r#"{"capability":"message.post","content":"x"}"#).contains("budget"));
+    }
+
+    #[test]
+    fn kv_list_answers_every_key() {
+        let mut host = Host::default();
+        call(&mut host, r#"{"capability":"kv.store","op":"set","key":"b","value":"1"}"#);
+        call(&mut host, r#"{"capability":"kv.store","op":"set","key":"a","value":"2"}"#);
+        assert_eq!(call(&mut host, r#"{"capability":"kv.store","op":"list"}"#), r#"{"ok":true,"keys":["a","b"]}"#);
     }
 
     #[test]

@@ -62,6 +62,13 @@ fn play<H: Host>(host: &H, input: &str, run: &Run) -> String {
     outcome.unwrap_or_else(|why| failure(&why))
 }
 
+/// The board as another run left it, for a guess whose turn was taken: it counts for nothing and says so.
+fn lost_race(stored: &Stored, answer: &'static str) -> Game {
+    let mut game = Game::with_guesses(answer, stored.guesses.iter().map(String::as_str));
+    game.refused = Some("another guess landed first - try again".to_owned());
+    game
+}
+
 /// A private frame that says what went wrong, so a refused capability reads as a sentence, not a blank board.
 fn failure(why: &str) -> String {
     let game = Game::new(WORDS[0]);
@@ -75,7 +82,9 @@ fn daily_guess<H: Host>(host: &H, day: i64, player: &str, word: &str) -> Result<
     let mut game = Game::with_guesses(answer_for(day), stored.guesses.iter().map(String::as_str));
     if game.guess(word) {
         let kept = Stored { guesses: game.guesses.clone(), done: game.over(), won: game.solved(), seed: 0 };
-        plays.save(day, player, &kept)?;
+        if !plays.advance(day, player, &stored, &kept)? {
+            return daily_board(host, day, player, Some(lost_race(&plays.load(day, player)?, answer_for(day))));
+        }
     }
     daily_board(host, day, player, Some(game))
 }
@@ -162,7 +171,10 @@ fn practice_guess<H: Host>(host: &H, player: &str, word: &str) -> Result<String,
     }
     let mut game = Game::with_guesses(practice_answer(stored.seed), stored.guesses.iter().map(String::as_str));
     if game.guess(word) {
-        plays.save_practice(player, &Stored { guesses: game.guesses.clone(), done: game.over(), won: game.solved(), seed: stored.seed })?;
+        let kept = Stored { guesses: game.guesses.clone(), done: game.over(), won: game.solved(), seed: stored.seed };
+        if !plays.advance_practice(player, &stored, &kept)? {
+            return Ok(practice_scene(&lost_race(&plays.load_practice(player)?, practice_answer(stored.seed))));
+        }
     }
     Ok(practice_scene(&game))
 }
@@ -185,6 +197,7 @@ mod tests {
     use super::*;
     use crate::daily::DAY_MS;
     use crate::fake::FakeHost;
+    use std::cell::Cell;
 
     const DAY: i64 = 20_000;
     const NOON: i64 = DAY * DAY_MS + DAY_MS / 2;
@@ -392,5 +405,71 @@ mod tests {
         act(&host, &format!("guess:{}", wrong_word()), "a|b\"c\u{0}", NOON);
         let key = host.plays.borrow()[0]["k"].as_str().unwrap().to_owned();
         assert_eq!(key, format!("{DAY}|abc"));
+    }
+
+    /// A host where the same player's other run saves its own guess right after this run reads the board.
+    struct RacingHost<'a> {
+        inner: &'a FakeHost,
+        rival: Stored,
+        practice: bool,
+        armed: Cell<bool>,
+    }
+
+    impl Host for RacingHost<'_> {
+        fn call(&self, request: &Value) -> Result<Value, String> {
+            let reply = self.inner.call(request)?;
+            if request["op"] == "get" && self.armed.replace(false) {
+                let plays = Plays::new(self.inner);
+                if self.practice {
+                    plays.save_practice("ann", &self.rival)?;
+                } else {
+                    plays.save(DAY, "ann", &self.rival)?;
+                }
+            }
+            Ok(reply)
+        }
+    }
+
+    fn racing<'a>(host: &'a FakeHost, rival: &[&str], practice: bool) -> RacingHost<'a> {
+        let rival = Stored { guesses: rival.iter().map(|g| (*g).to_owned()).collect(), seed: u64::from(practice), ..Stored::default() };
+        RacingHost { inner: host, rival, practice, armed: Cell::new(true) }
+    }
+
+    fn guess_as_ann(host: &impl Host, word: &str) -> Value {
+        let input = json!({"action": format!("guess:{word}")}).to_string();
+        serde_json::from_str(&apply(host, "wordguess", &input, &run("ann", NOON)).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_second_guess_racing_the_first_is_refused_and_gives_no_feedback() {
+        let host = FakeHost::default();
+        act(&host, &format!("guess:{}", wrong_word()), "ann", NOON);
+        let host_ref = racing(&host, &[wrong_word(), "pound"], false);
+        let answer = guess_as_ann(&host_ref, "fight");
+        assert_eq!(host.plays.borrow()[0]["guesses"], format!("{},pound", wrong_word()), "the rival's guess stands");
+        assert_eq!(letters(&answer), format!("{}POUND", wrong_word()).to_uppercase(), "no feedback for the lost guess");
+        assert!(answer["status"].as_str().unwrap().contains("another guess landed first"), "{}", answer["status"]);
+    }
+
+    #[test]
+    fn two_first_guesses_racing_keep_only_the_one_that_stored_first() {
+        let host = FakeHost::default();
+        let host_ref = racing(&host, &["pound"], false);
+        let answer = guess_as_ann(&host_ref, wrong_word());
+        assert_eq!(host.plays.borrow().len(), 1);
+        assert_eq!(host.plays.borrow()[0]["guesses"], "pound");
+        assert!(answer["status"].as_str().unwrap().contains("another guess landed first"));
+    }
+
+    #[test]
+    fn a_practice_guess_racing_another_is_refused_too() {
+        let host = FakeHost::default();
+        let seed = practice_seed(&run("ann", NOON));
+        new_practice(&host, "ann", seed).unwrap();
+        let host_ref = RacingHost { inner: &host, rival: Stored { guesses: vec!["pound".into()], seed, ..Stored::default() }, practice: true, armed: Cell::new(true) };
+        let input = json!({"action": "pguess:crane"}).to_string();
+        let answer: Value = serde_json::from_str(&apply(&host_ref, "wordguess", &input, &run("ann", NOON)).unwrap()).unwrap();
+        assert_eq!(host.plays.borrow()[0]["guesses"], "pound");
+        assert!(answer["status"].as_str().unwrap().contains("another guess landed first"), "{}", answer["status"]);
     }
 }

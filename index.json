@@ -76,7 +76,7 @@
     {
       "id": "word-guess",
       "name": "Word Guess",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "summary": "One five-letter word a day, the same for everyone, each on their own private board, with a spoiler-free result to post."
     },
     {
@@ -130,13 +130,13 @@
     {
       "id": "tags",
       "name": "Tags",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Keep short named snippets like rules and FAQs, and post one into a channel with /tag name."
     },
     {
       "id": "reminder",
       "name": "Reminder",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time."
     },
     {
@@ -184,7 +184,7 @@
     {
       "id": "events",
       "name": "Events",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Post an event, collect Going, Maybe and Can't answers, and remind the people who are going before it starts."
     },
     {
