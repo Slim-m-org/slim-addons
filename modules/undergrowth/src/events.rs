@@ -91,6 +91,9 @@ pub fn catch_up_calls<H: Host>(store: &Store<H>, now_ms: i64) -> Result<usize, S
     let mut warm = Vec::new();
     let mut minutes: Vec<(String, i64)> = Vec::new();
     for row in &rows {
+        if row["is_bot"].as_bool().unwrap_or(false) {
+            continue;
+        }
         let n = |k: &str| row[k].as_i64().unwrap_or(0);
         let together = (n("left_at_ms") - n("joined_at_ms") - n("alone_ms")).max(0) / 60_000;
         if together == 0 {

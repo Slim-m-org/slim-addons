@@ -80,6 +80,8 @@ NOW_MS = 1_700_000_000_000
 LATER_MS = {("reminder", "due"): 31 * 60_000}
 # Flags a module's commands need beyond the kv file; data.store comes from the manifest and needs none.
 FETCH_FILES = {"weather": root / "scripts" / "fixtures" / "weather-fetch.json"}
+# A module that keeps what it stores apart per member needs to be told who is asking.
+CALLERS = {"reminder": "member-1"}
 LOG_FILES = {"xp": root / "scripts" / "fixtures" / "xp-log.json"}
 
 
@@ -92,6 +94,8 @@ def load_scene_ops():
 
 def run_flags(mid, scratch, now_ms):
     flags = ["--kv-file", f"{scratch}/kv", "--data-file", f"{scratch}/data", "--now-ms", str(now_ms)]
+    if mid in CALLERS:
+        flags += ["--caller", CALLERS[mid]]
     if mid in LOG_FILES:
         flags += ["--log-file", str(LOG_FILES[mid])]
     if mid in FETCH_FILES:

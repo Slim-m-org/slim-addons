@@ -272,6 +272,29 @@ fn calls_warm_the_soil_exactly_once_even_when_the_event_is_missed() {
 }
 
 #[test]
+fn a_bot_in_a_call_warms_nothing_and_earns_no_profile_entry() {
+    let host = FakeHost::default();
+    let bot = json!({"id": 1, "user_id": "music", "channel_id": "c", "joined_at_ms": 0, "left_at_ms": 30 * 60_000, "alone_ms": 0, "is_bot": true});
+    let member = json!({"id": 2, "user_id": "u1", "channel_id": "c", "joined_at_ms": 0, "left_at_ms": 20 * 60_000, "alone_ms": 0, "is_bot": false});
+    host.log.borrow_mut().extend([bot, member]);
+    call(&host, "almanac", "bot", "", T0, json!({"almanac": false}));
+    let warm: Vec<i64> = host.rows("inbox").iter().filter(|r| r["kind"] == "warm").map(|r| r["amount"].as_i64().unwrap()).collect();
+    assert_eq!(warm, vec![20]);
+    assert!(host.rows("feeders").iter().all(|r| r["user_id"] != "music"));
+}
+
+#[test]
+fn an_unlinked_member_who_fed_the_soil_has_no_profile_section() {
+    let host = FakeHost::default();
+    call(&host, "@event", "bot", &message("m1", "user-a", "hello"), T0, json!({}));
+    let ask = json!({"slot": "profile.section", "name": "grove", "user_ids": ["user-a"], "viewer_id": "v"});
+    let reply = call(&host, "@slot", "v", &ask.to_string(), T0, json!({}));
+    let slot: Value = serde_json::from_str(reply["output"].as_str().unwrap()).unwrap();
+    assert!(slot["items"].get("user-a").is_none(), "{slot}");
+    assert!(!host.rows("feeders").is_empty(), "the soil is still fed");
+}
+
+#[test]
 fn the_almanac_posts_once_a_day_and_tidies_old_rows() {
     let host = FakeHost::default();
     let day = 86_400_000;

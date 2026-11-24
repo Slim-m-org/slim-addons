@@ -5,7 +5,7 @@
   "name": "XP and levels",
   "version": "0.1.3",
   "summary": "Members earn XP for time in voice calls and show a level bar on their profile.",
-  "description": "Members earn XP for the minutes they spend in voice calls, and a level bar shows on their profile with a short Lv badge next to their name. By default time alone in a call earns nothing, and messages earn nothing; both can be changed in the module's settings, along with the XP rate and how steep the levels get. It reads closed call sessions (log.read) so no call is missed while the server restarts, listens for call and message events (events), and keeps its totals in its own small database (data.store). An admin approves each when installing.",
+  "description": "Members earn XP for the minutes they spend in voice calls, and a level bar shows on their profile with a short Lv badge next to their name. By default time alone in a call earns nothing, and messages earn nothing; both can be changed in the module's settings, along with the XP rate and how steep the levels get. It reads closed call sessions (log.read) so no call is missed while the server restarts, listens for call and message events (events), so the host hands it the text of every message it can see, although it reads only who sent each one and when, and only when XP per message is above zero, and keeps its totals in its own small database (data.store). An admin approves each when installing.",
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {
@@ -179,7 +179,8 @@
     {
       "version": "0.1.3",
       "changes": [
-        "A catch-up that has to create member rows one by one stops early and finishes on the next run instead of failing part way."
+        "A catch-up that has to create member rows one by one stops early and finishes on the next run instead of failing part way.",
+        "The description now says the module is handed the text of messages through its message event, which it does not read."
       ]
     },
     {

@@ -136,8 +136,8 @@
     {
       "id": "reminder",
       "name": "Reminder",
-      "version": "0.1.2",
-      "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time."
+      "version": "0.2.0",
+      "summary": "Say when and what with /remind 30m take the bread out, and the channel you set it in is told when it is time."
     },
     {
       "id": "weather",

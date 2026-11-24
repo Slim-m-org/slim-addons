@@ -1,5 +1,5 @@
-//! What the undergrowth shows on profiles: how much a member's messages and calls have fed it,
-//! and, for members who linked their profile, their record and the champion badge.
+//! What the undergrowth shows on profiles, only for members who linked their profile: how much
+//! their messages and calls have fed it, their record and the champion badge.
 
 use serde_json::{json, Map, Value};
 
@@ -47,6 +47,7 @@ pub fn rank(leaves: i64) -> (&'static str, Option<i64>) {
 }
 
 fn section(feeder: Option<&Value>, record: Option<&Value>, crowned: bool) -> Option<Value> {
+    record?;
     let n = |v: Option<&Value>, k: &str| v.and_then(|v| v[k].as_i64()).unwrap_or(0);
     let leaves = n(feeder, "leaves");
     let warm = n(feeder, "warm_min");
@@ -90,10 +91,18 @@ mod tests {
     }
 
     #[test]
-    fn a_member_who_fed_nothing_and_never_linked_shows_nothing() {
+    fn a_member_who_never_linked_shows_nothing_however_much_they_fed() {
         assert!(section(None, None, false).is_none());
         let fed = json!({"leaves": 30, "warm_min": 75});
-        let item = section(Some(&fed), None, false).unwrap();
+        assert!(section(Some(&fed), None, false).is_none());
+        assert!(section(Some(&fed), None, true).is_none());
+    }
+
+    #[test]
+    fn a_member_who_linked_shows_leaves_and_warm_minutes() {
+        let fed = json!({"leaves": 30, "warm_min": 75});
+        let linked = json!({"seasons": 0});
+        let item = section(Some(&fed), Some(&linked), false).unwrap();
         let texts = item.to_string();
         assert!(texts.contains("Rootlet") && texts.contains("1 h 15 min"), "{texts}");
     }
