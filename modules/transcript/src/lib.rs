@@ -34,6 +34,15 @@ struct Request {
     /// The host's clock, UTC epoch milliseconds; zero when the host gives none.
     #[serde(default)]
     now_ms: i64,
+    #[serde(default)]
+    context: Context,
+}
+
+#[derive(Deserialize, Default)]
+struct Context {
+    /// Set only when the host confirmed the caller is in that call.
+    #[serde(default)]
+    voice_channel_id: Option<String>,
 }
 
 /// Reserves `len` bytes in this module's own linear memory and returns a pointer to them.
@@ -63,8 +72,8 @@ fn handle<H: Host>(host: &H, request: &[u8]) -> Vec<u8> {
     let settings = Settings::from_value(&parsed.settings);
     let store = Store::new(host);
     let answer = match parsed.command.as_str() {
-        "@event" => ingest::on_event(&store, &settings, &parsed.input),
-        "transcript" => command::transcript(&store, &settings),
+        "@event" => ingest::on_event(&store, &settings, (&parsed.input, parsed.now_ms)),
+        "transcript" => command::transcript(&store, &settings, parsed.context.voice_channel_id.as_deref().unwrap_or("")),
         "flush" => command::flush(&store, &settings, parsed.now_ms),
         other => Err(format!("unknown command {other}")),
     };

@@ -49,8 +49,10 @@ A run may post three messages, so a long transcript finishes on the timer, every
 The number of lines already posted lives on the call and moves with one conditional write before each post.
 Two runs that reach the same call, the end of the call and the timer, never post the same lines twice.
 A post the host refuses gives its lines back, and the next run tries again.
+A call refused six times in a row is parked, so it stops using the timer's posts and newer calls still go out.
+The claim stays marked on the call until the post is confirmed, and a claim a cut-off run never confirmed is posted again on a later run.
 
-`/transcript` posts what has been said so far in a call that is on, as the member who ran it, in the channel they ran it from.
+`/transcript` posts what has been said so far in the call the member is in, as the member who ran it, in the channel they ran it from.
 It posts at most three messages, says so when there is more, and does not change what the final transcript posts.
 It needs the `post` permission, which an admin grants.
 
@@ -58,7 +60,7 @@ It needs the `post` permission, which an admin grants.
 
 | table | holds |
 | --- | --- |
-| `calls` | one row per call: times, state (`on`, `done`, `posted`), why it stopped, how many segments arrived, were sent and were dropped, how many lines are posted |
+| `calls` | one row per call: times, state (`on`, `done`, `posted`, `parked`), why it stopped, how many segments arrived, were sent and were dropped, how many lines are posted |
 | `people` | who is in the agreed set of a call, the speaker number they hold and the name slim gave them |
 | `lines` | each utterance: speaker, start, end and text, at most 1,000 characters |
 

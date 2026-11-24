@@ -154,7 +154,7 @@
     {
       "id": "transcript",
       "name": "Call transcript",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Writes down a voice call, with everyone's agreement, and posts the transcript when it ends."
     },
     {

@@ -17,6 +17,18 @@ fn run(host: &FakeHost, command: &str, input: Value, settings: Value, now_ms: i6
     serde_json::from_slice(&handle(host, request.to_string().as_bytes())).unwrap()
 }
 
+fn ask(host: &FakeHost, voice_channel: &str) -> Value {
+    host.next_run();
+    let context = if voice_channel.is_empty() { json!({}) } else { json!({"voice_channel_id": voice_channel}) };
+    let request = json!({"command": "transcript", "input": "", "settings": {}, "now_ms": T0, "context": context});
+    serde_json::from_slice(&handle(host, request.to_string().as_bytes())).unwrap()
+}
+
+fn start_in(host: &FakeHost, session: &str, channel: &str) {
+    let data = json!({"session_id": session, "channel_id": channel, "started_at_ms": T0, "included": ["ada"]});
+    event(host, "call.audio.started", data);
+}
+
 fn event(host: &FakeHost, name: &str, data: Value) -> Value {
     let input = json!({"$slim": "event/1", "event": name, "id": "call-audio:x:1", "at_ms": T0, "data": data});
     let reply = run(host, "@event", input, json!({}), T0);
@@ -350,9 +362,9 @@ fn the_timer_needs_a_clock() {
 fn the_command_posts_the_call_so_far_without_moving_the_final_transcript() {
     let host = FakeHost::default();
     start(&host, S, &["ada"]);
-    assert_eq!(run(&host, "transcript", json!(""), json!({}), T0)["output"], "Nothing has been said yet.");
+    assert_eq!(ask(&host, "c1")["output"], "Nothing has been said yet.");
     say(&host, S, "ada", (4, 6), "halfway through");
-    let reply = run(&host, "transcript", json!(""), json!({}), T0);
+    let reply = ask(&host, "c1");
     assert_eq!(reply["output"], "");
     assert!(posts(&host)[0].starts_with("**Call transcript so far** - started 2023-11-14 22:13 UTC\n\n[0:04] Speaker 1: halfway through"));
     assert_eq!(host.call(S)["posted"], 0);
@@ -364,15 +376,15 @@ fn the_command_posts_the_call_so_far_without_moving_the_final_transcript() {
 #[test]
 fn the_command_says_so_when_no_call_is_on_and_when_it_cannot_post() {
     let host = FakeHost::default();
-    assert_eq!(run(&host, "transcript", json!(""), json!({}), T0)["output"], "No call is being transcribed right now.");
+    assert_eq!(ask(&host, "c1")["output"], "No call is being transcribed right now.");
     start(&host, S, &["ada"]);
     say(&host, S, "ada", (1, 2), "hello");
     host.no_channel.set(true);
-    let reply = run(&host, "transcript", json!(""), json!({}), T0);
+    let reply = ask(&host, "c1");
     assert_eq!(reply["ok"], false);
     host.no_channel.set(false);
     host.refuse_posts.replace(Some("slow mode is active in that channel".to_string()));
-    assert!(run(&host, "transcript", json!(""), json!({}), T0)["error"].as_str().unwrap().contains("slow mode"));
+    assert!(ask(&host, "c1")["error"].as_str().unwrap().contains("slow mode"));
 }
 
 #[test]
@@ -382,7 +394,7 @@ fn the_command_notes_when_a_long_call_does_not_fit_what_it_may_post() {
     for n in 0..120 {
         say(&host, S, "ada", (n * 100, n * 100 + 5), &format!("{n:04} {}", "word ".repeat(40)));
     }
-    run(&host, "transcript", json!(""), json!({}), T0);
+    ask(&host, "c1");
     let posted = posts(&host);
     assert_eq!(posted.len(), 3);
     assert!(posted[2].contains("There is more than fits here.") && !posted[1].contains("There is more than fits here."));
@@ -467,4 +479,108 @@ mod manifest {
         assert_eq!(parsed.merge_gap_s, defaults[1].1.as_i64().unwrap());
         assert_eq!(parsed.timestamps, defaults[2].1.as_bool().unwrap());
     }
+}
+
+#[test]
+fn the_command_posts_only_the_call_the_caller_is_in() {
+    let host = FakeHost::default();
+    start_in(&host, "private", "vc-private");
+    start_in(&host, "open", "vc-open");
+    say(&host, "private", "ada", (1, 2), "private words");
+    say(&host, "open", "ada", (1, 2), "open words");
+    assert_eq!(ask(&host, "")["ok"], false, "a caller in no call gets nothing");
+    assert_eq!(ask(&host, "vc-elsewhere")["output"], "No call is being transcribed right now.");
+    assert!(posts(&host).is_empty());
+    assert_eq!(ask(&host, "vc-private")["output"], "");
+    let body = &posts(&host)[0];
+    assert!(body.contains("private words") && !body.contains("open words"), "{body}");
+}
+
+#[test]
+fn a_call_stored_before_channels_were_kept_is_never_handed_to_a_caller() {
+    let host = FakeHost::default();
+    start(&host, S, &["ada"]);
+    say(&host, S, "ada", (1, 2), "hello");
+    host.clear_columns(S, &["channel_id", "attempts", "claimed_from", "claimed_to", "claimed_ms"]);
+    assert_eq!(ask(&host, "c1")["output"], "No call is being transcribed right now.");
+    stop(&host, S, "stopped", 1);
+    assert_eq!(posts(&host).len(), 1, "an upgraded row still posts when it ends");
+    assert_eq!(host.call(S)["state"], "posted");
+}
+
+fn finished_call(host: &FakeHost, session: &str, at_s: i64) {
+    let data = json!({"session_id": session, "channel_id": "c1", "started_at_ms": T0 + at_s * SEC, "included": ["ada"]});
+    event(host, "call.audio.started", data);
+    let line = json!({"session_id": session, "user_id": "ada", "text": "words", "segment_id": format!("{session}-1"), "start_ms": T0 + at_s * SEC, "end_ms": T0 + at_s * SEC + SEC});
+    event(host, "call.audio.segment", line);
+}
+
+#[test]
+fn a_call_the_host_keeps_refusing_is_parked_and_does_not_block_the_others() {
+    let host = FakeHost::default();
+    host.refuse_posts.replace(Some("the server filter refused it".to_string()));
+    for (n, id) in ["bad1", "bad2", "bad3"].iter().enumerate() {
+        finished_call(&host, id, n as i64);
+        stop(&host, id, "stopped", 1);
+    }
+    for round in 0..crate::post::MAX_REFUSALS {
+        flush(&host, T0 + 40 * MIN + round * 6 * MIN);
+    }
+    assert!(["bad1", "bad2", "bad3"].iter().all(|id| host.call(id)["state"] == "parked"));
+    host.refuse_posts.replace(None);
+    finished_call(&host, "good", 10);
+    stop(&host, "good", "stopped", 1);
+    assert!(posts(&host).iter().any(|p| p.contains("words")), "the newer call posts at its end");
+    assert_eq!(host.call("good")["state"], "posted");
+}
+
+#[test]
+fn a_timer_run_with_refused_calls_at_the_head_still_reaches_a_newer_call() {
+    let host = FakeHost::default();
+    for (n, id) in ["old1", "old2", "old3", "new"].iter().enumerate() {
+        finished_call(&host, id, n as i64);
+        host.no_channel.set(*id != "new");
+        stop(&host, id, "stopped", 1);
+    }
+    host.no_channel.set(false);
+    host.refuse_posts.replace(Some("refused for good".to_string()));
+    for round in 0..crate::post::MAX_REFUSALS {
+        flush(&host, T0 + 40 * MIN + round * 6 * MIN);
+    }
+    host.refuse_posts.replace(None);
+    flush(&host, T0 + 90 * MIN);
+    assert!(!posts(&host).is_empty());
+    assert_eq!(host.call("new")["state"], "posted", "parked calls no longer hold the head of the sweep");
+}
+
+#[test]
+fn a_refusal_that_clears_does_not_park_the_call() {
+    let host = FakeHost::default();
+    finished_call(&host, S, 0);
+    host.refuse_posts.replace(Some("slow mode is active".to_string()));
+    stop(&host, S, "stopped", 1);
+    assert_eq!(host.call(S)["attempts"], 1);
+    host.refuse_posts.replace(None);
+    flush(&host, T0 + 40 * MIN);
+    assert_eq!(host.call(S)["state"], "posted");
+    assert_eq!(host.call(S)["attempts"], 0);
+}
+
+#[test]
+fn lines_claimed_by_a_run_that_was_cut_off_are_posted_on_the_next_run() {
+    let host = FakeHost::default();
+    finished_call(&host, S, 0);
+    host.fail_data_after_post.set(true);
+    let data = json!({"session_id": S, "stopped_at_ms": T0 + MIN, "reason": "stopped", "segments_sent": 1});
+    let first = run(&host, "@event", json!({"event": "call.audio.stopped", "data": data}), json!({}), T0 + MIN);
+    assert_eq!(first["ok"], false, "{first}");
+    host.fail_data_after_post.set(false);
+    let row = host.call(S);
+    assert_eq!((row["posted"].as_i64(), row["claimed_to"].as_i64()), (Some(1), Some(1)), "the claim is marked in flight");
+    let before = posts(&host).len();
+    flush(&host, T0 + MIN);
+    assert_eq!(posts(&host).len(), before, "a claim that may still be in flight is left alone");
+    flush(&host, T0 + 5 * MIN);
+    assert_eq!(posts(&host).len(), before + 1, "the lines went out again");
+    assert_eq!(host.call(S)["state"], "posted");
 }
