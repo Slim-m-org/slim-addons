@@ -12,9 +12,12 @@ pub const LAPSE_MS: i64 = 30 * MINUTE_MS;
 /// Calls looked at in one sweep, so a backlog drains over a few runs.
 const SWEEP: i64 = 10;
 
-/// Posts what has been said in the call that is on, as the member who asked, in the channel they asked from.
-pub fn transcript<H: Host>(store: &Store<H>, settings: &Settings) -> Result<String, String> {
-    let Some(call) = store.calls_in_state("on", "desc", 1)?.into_iter().next() else {
+/// Posts what has been said in the call the member is in, as the member who asked, in the channel they asked from.
+pub fn transcript<H: Host>(store: &Store<H>, settings: &Settings, voice_channel: &str) -> Result<String, String> {
+    if voice_channel.is_empty() {
+        return Err("Join the call you want a transcript of, then run /transcript.".to_string());
+    }
+    let Some(call) = store.call_in_channel("on", voice_channel)? else {
         return Ok("No call is being transcribed right now.".to_string());
     };
     match post::post_so_far(store, settings, &call)? {
@@ -42,7 +45,7 @@ pub fn flush<H: Host>(store: &Store<H>, settings: &Settings, now_ms: i64) -> Res
         if store.posts_left() == 0 || store.data_left() < 12 {
             break;
         }
-        let outcome = post::post_pending(store, settings, &call)?;
+        let outcome = post::post_pending(store, settings, &call, now_ms)?;
         posted += outcome.messages;
         waiting = waiting.or(outcome.waiting);
     }

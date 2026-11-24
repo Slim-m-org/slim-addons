@@ -33,6 +33,9 @@ pub struct FakeHost {
     pub no_channel: Cell<bool>,
     /// Posts refuse with this text once armed.
     pub refuse_posts: RefCell<Option<String>>,
+    /// Every data call after the next successful post fails, as when a run is cut off right after it.
+    pub fail_data_after_post: Cell<bool>,
+    posted_this_run: Cell<bool>,
 }
 
 impl Default for FakeHost {
@@ -56,6 +59,8 @@ impl Default for FakeHost {
             posts: RefCell::default(),
             no_channel: Cell::new(false),
             refuse_posts: RefCell::default(),
+            fail_data_after_post: Cell::new(false),
+            posted_this_run: Cell::new(false),
         }
     }
 }
@@ -65,6 +70,17 @@ impl FakeHost {
     pub fn next_run(&self) {
         self.data_calls.set(0);
         self.posts_this_run.set(0);
+        self.posted_this_run.set(false);
+    }
+
+    /// Makes a call's row look as one stored before these columns existed.
+    pub fn clear_columns(&self, session: &str, columns: &[&str]) {
+        let mut tables = self.tables.borrow_mut();
+        for row in tables.get_mut("calls").unwrap().rows.iter_mut().filter(|r| r["session_id"] == session) {
+            for col in columns {
+                row.insert((*col).to_string(), Value::Null);
+            }
+        }
     }
 
     pub fn rows(&self, table: &str) -> Vec<Row> {
@@ -80,6 +96,9 @@ impl FakeHost {
     }
 
     fn data(&self, request: &Value) -> Result<Value, String> {
+        if self.fail_data_after_post.get() && self.posted_this_run.get() {
+            return Err("the run ran out of time".to_string());
+        }
         self.data_calls.set(self.data_calls.get() + 1);
         if self.data_calls.get() > DATA_CALLS_PER_RUN {
             return Err("data.store call budget for this run is exhausted".to_string());
@@ -119,6 +138,7 @@ impl FakeHost {
             return Err("content is empty or too long".to_string());
         }
         self.posts.borrow_mut().push(content.to_string());
+        self.posted_this_run.set(true);
         Ok(json!({"ok": true, "message_id": format!("m{}", self.posts.borrow().len())}))
     }
 }
