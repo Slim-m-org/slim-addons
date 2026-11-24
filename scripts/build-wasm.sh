@@ -20,8 +20,9 @@ dir=$(cd "$dir" && pwd)
 out=$(realpath -m "$out")
 
 cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-sysroot=$(rustc --print sysroot)
-commit=$(rustc -vV | sed -n 's/^commit-hash: //p')
+# Asked from the module directory, where cargo runs, so both see the same toolchain file or override.
+sysroot=$(cd "$dir" && rustc --print sysroot)
+commit=$(cd "$dir" && rustc -vV | sed -n 's/^commit-hash: //p')
 
 flags=(
   "--remap-path-prefix=$cargo_home=/cargo"

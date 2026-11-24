@@ -22,6 +22,8 @@ const MAX_CALLS_PER_RUN: u32 = 64;
 /// Host calls of any kind in one run, refused ones included.
 const MAX_HOST_CALLS_PER_RUN: u32 = 128;
 const MAX_POSTS_PER_RUN: u32 = 3;
+/// Characters of a message slim accepts.
+const MAX_POST_CHARS: usize = 4000;
 /// Largest request slim reads from a module; a bigger one is refused before anything is copied.
 const MAX_HOST_CALL_REQUEST_BYTES: usize = 128 * 1024;
 
@@ -128,13 +130,27 @@ fn post(host: &mut Host, request: &str) -> String {
     if host.posts.len() as u32 >= MAX_POSTS_PER_RUN {
         return refusal("message.post budget for this run is exhausted");
     }
-    match field(request, "content") {
-        Some(content) if !content.trim().is_empty() => {
-            host.posts.push(content);
-            format!("{{\"ok\":true,\"message_id\":\"simulated-{}\"}}", host.posts.len())
-        }
-        _ => refusal("message.post needs content"),
+    let Some(content) = field(request, "content") else { return refusal("message.post needs content") };
+    if hides_text(&content) {
+        return refusal("content contains hidden characters");
     }
+    if content.chars().all(|c| c.is_whitespace()) || content.chars().count() > MAX_POST_CHARS {
+        return refusal("content is empty or too long");
+    }
+    host.posts.push(content);
+    format!("{{\"ok\":true,\"message_id\":\"simulated-{}\"}}", host.posts.len())
+}
+
+/// Controls and invisible characters slim refuses in a post; a joiner or a tag inside an emoji is left alone, so this is close to slim's check and not the same.
+fn hides_text(content: &str) -> bool {
+    content.chars().any(|c| {
+        let emoji_part = c == '\u{200D}' || ('\u{E0020}'..='\u{E007F}').contains(&c);
+        let invisible = matches!(c,
+            '\u{00AD}' | '\u{034F}' | '\u{061C}' | '\u{115F}'..='\u{1160}' | '\u{17B4}'..='\u{17B5}' | '\u{180E}'
+            | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{206F}' | '\u{2800}' | '\u{3164}'
+            | '\u{FEFF}' | '\u{FFA0}' | '\u{FFF9}'..='\u{FFFC}' | '\u{E0000}'..='\u{E007F}');
+        !matches!(c, '\n' | '\r' | '\t') && !emoji_part && (c.is_control() || invisible)
+    })
 }
 
 /// Answers one `kv.store` request. The reading is deliberately dumb (string
@@ -151,6 +167,10 @@ fn kv(host: &mut Host, request: &str) -> String {
             None => "{\"ok\":true,\"value\":null}".to_owned(),
         },
         (Some("set"), Some(key), Some(value)) => set(host, key, value),
+        (Some("list"), _, _) => {
+            let keys: Vec<String> = host.kv.keys().map(|k| format!("\"{}\"", crate::escape(k))).collect();
+            format!("{{\"ok\":true,\"keys\":[{}]}}", keys.join(","))
+        }
         (Some("delete"), Some(key), _) => {
             host.kv.remove(&key);
             "{\"ok\":true}".to_owned()
@@ -267,6 +287,31 @@ mod tests {
         call(&mut host, r#"{"capability":"kv.store","op":"set","key":"b","value":"1"}"#);
         call(&mut host, r#"{"capability":"kv.store","op":"set","key":"a","value":"2"}"#);
         assert_eq!(call(&mut host, r#"{"capability":"kv.store","op":"list"}"#), r#"{"ok":true,"keys":["a","b"]}"#);
+    }
+
+    #[test]
+    fn kv_list_returns_the_keys_in_order() {
+        let mut host = Host::default();
+        assert_eq!(call(&mut host, r#"{"capability":"kv.store","op":"list"}"#), r#"{"ok":true,"keys":[]}"#);
+        call(&mut host, r#"{"capability":"kv.store","op":"set","key":"b","value":"1"}"#);
+        call(&mut host, r#"{"capability":"kv.store","op":"set","key":"a\"x","value":"1"}"#);
+        assert_eq!(call(&mut host, r#"{"capability":"kv.store","op":"list"}"#), r#"{"ok":true,"keys":["a\"x","b"]}"#);
+    }
+
+    #[test]
+    fn a_post_slim_would_refuse_is_refused_here_and_not_recorded() {
+        let mut host = Host::default();
+        for hidden in ["a\\u200bb", "a\\u202eb", "a\\u0007b", "\\u3164"] {
+            let request = format!(r#"{{"capability":"message.post","content":"{hidden}"}}"#);
+            assert!(call(&mut host, &request).contains("hidden characters"), "{hidden:?}");
+        }
+        let long = "x".repeat(MAX_POST_CHARS + 1);
+        let reply = call(&mut host, &format!(r#"{{"capability":"message.post","content":"{long}"}}"#));
+        assert!(reply.contains("empty or too long"), "{reply}");
+        let fits = "x".repeat(MAX_POST_CHARS);
+        assert!(call(&mut host, &format!(r#"{{"capability":"message.post","content":"{fits}"}}"#)).contains(r#""ok":true"#));
+        assert!(call(&mut host, r#"{"capability":"message.post","content":"line\nbreak\ttab"}"#).contains(r#""ok":true"#));
+        assert_eq!(host.posts.len(), 2);
     }
 
     #[test]

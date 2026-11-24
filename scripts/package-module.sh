@@ -18,6 +18,9 @@ manifest="$dir/manifest.json"
 
 id=$(python3 -c "import json,sys;print(json.load(open('$manifest'))['id'])")
 version=$(python3 -c "import json,sys;print(json.load(open('$manifest'))['version'])")
+# The same plain-segment rule check-catalogue.py holds the manifest to, so no path leaves modules/<id>/.
+[[ "$id" =~ ^[A-Za-z0-9_@+-][A-Za-z0-9._@+-]*$ && "$id" != "." && "$id" != ".." ]] || { echo "id '$id' is not a plain path segment" >&2; exit 1; }
+[[ "$version" =~ ^[0-9A-Za-z.+-]+$ && "$version" != "." && "$version" != ".." ]] || { echo "version '$version' is not a plain path segment" >&2; exit 1; }
 echo "packaging $id v$version"
 
 # Build with the registry's one recipe, straight to the versioned artifact path

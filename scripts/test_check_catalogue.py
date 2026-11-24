@@ -55,15 +55,41 @@ class CatalogueTest(unittest.TestCase):
         index["modules"][0]["ref"] = ref
         (self.tmp / "index.json").write_text(json.dumps(index))
 
-    def test_an_index_ref_must_be_a_sha_or_a_tag_name(self):
-        for good in ("3f9c1c0b1a2d4e5f60718293a4b5c6d7e8f90a1b", "dice-v0.3.3", "v1.2"):
-            self.set_ref(good)
-            self.assertEqual(self.run_check().returncode, 0, good)
-        for bad in ("../main", "a/b", "", "has space", "x..y", 7):
+    def test_an_index_ref_must_be_a_commit_sha(self):
+        self.set_ref("3f9c1c0b1a2d4e5f60718293a4b5c6d7e8f90a1b")
+        self.assertEqual(self.run_check().returncode, 0)
+        for bad in ("dice-v0.3.3", "v1.2", "main", "3f9c1c0", "3F9C1C0B1A2D4E5F60718293A4B5C6D7E8F90A1B", "../main", "a/b", "", 7):
             self.set_ref(bad)
             done = self.run_check()
             self.assertEqual(done.returncode, 1, repr(bad))
-            self.assertIn("is not a commit sha or a tag name", done.stderr)
+            self.assertIn("is not a 40-character commit sha", done.stderr)
+
+    def set_version(self, version):
+        def bump(manifest):
+            manifest["version"] = version
+            manifest["artifact"]["path"] = f"modules/table/{version}/module.wasm"
+            manifest["changelog"] = [{"version": version, "changes": ["x"]}]
+
+        self.edit_manifest("table", bump)
+        index = json.loads((self.tmp / "index.json").read_text())
+        for row in index["modules"]:
+            if row["id"] == "table":
+                row["version"] = version
+        (self.tmp / "index.json").write_text(json.dumps(index))
+
+    def test_a_version_that_is_not_a_plain_path_segment_is_refused(self):
+        for bad in ("../../x", "..", ".", "1.0/2", "1.0 0", "1.0\\n", "", "1.0@x"):
+            self.set_version(bad)
+            done = self.run_check()
+            self.assertEqual(done.returncode, 1, repr(bad))
+            self.assertIn("version", done.stderr)
+            self.assertIn("plain path segment", done.stderr)
+
+    def test_an_artifact_path_must_be_plain_segments(self):
+        self.edit_manifest("table", lambda m: m["artifact"].update(path="modules/table/../table/0.1.0/module.wasm"))
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("plain path segments", done.stderr)
 
     def test_a_duplicated_index_row_is_refused(self):
         index = json.loads((self.tmp / "index.json").read_text())

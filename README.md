@@ -33,7 +33,7 @@ contract, limits, and publishing - is in slim-m's
 ## Running a module before you install it
 
 `tools/run-module` drives a module exactly the way slim does - same ABI, same
-wasmi version, and the same refusal of a module that imports anything but `slim.host_call` - so you
+wasmi version (CI checks it against slim-m's lockfile), and the same refusal of a module that imports anything but `slim.host_call` - so you
 can see what yours actually emits without installing it into a space.
 
 ```bash
