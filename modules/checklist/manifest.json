@@ -2,10 +2,16 @@
   "schema": 1,
   "id": "checklist",
   "name": "Checklist",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "summary": "A shared checklist and notes everyone in the channel can edit.",
   "description": "Launch a checklist from the apps menu (or type /checklist, optionally with a title) and keep it in the channel. Anyone looking at the message can add an item from the text field, tap an item to tick or untick it, remove one, or clear everything that is done, and there is a short shared notes field underneath. The whole list lives in the message itself, so it needs no storage. It holds up to 24 items of 40 characters, 280 characters of notes and a 40 character title; anything longer is explained under the list rather than dropped. It can also stay open as a panel beside the chat, a list of your own that keeps its items while you move between channels; that panel needs a server on add-on API 6.",
   "changelog": [
+    {
+      "version": "0.2.1",
+      "changes": [
+        "Fixes a tap landing on the wrong item when someone else changed the list first: items now have stable ids, and a tap on an item that has gone says so."
+      ]
+    },
     {
       "version": "0.2.0",
       "changes": [
@@ -37,8 +43,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/checklist/0.2.0/module.wasm",
-    "sha256": "0328fcec9fa602d8c3e47bdd41f397576dcf3a868a1f4e077dc00b6ea3adcdd6"
+    "path": "modules/checklist/0.2.1/module.wasm",
+    "sha256": "3e5295a7d878e02d6ae9b2d011d98a8171fd59590a6f95ae2adf3be6b835ae73"
   },
   "permissions": [
     {

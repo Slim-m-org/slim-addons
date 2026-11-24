@@ -17,6 +17,9 @@ pub struct Item {
     pub text: String,
     #[serde(rename = "d")]
     pub done: bool,
+    /// Stable for the item's life, so a tap names this item whatever has been added or removed since the viewer's frame.
+    #[serde(rename = "k", default)]
+    pub id: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -27,6 +30,9 @@ pub struct List {
     pub items: Vec<Item>,
     #[serde(rename = "n")]
     pub notes: String,
+    /// The id the next item gets; it only grows, so a removed item's id is never handed out again.
+    #[serde(rename = "c", default)]
+    pub next_id: u32,
 }
 
 /// A frame to draw: the list, plus the one line saying why the last action did nothing, if it did nothing.
@@ -44,7 +50,7 @@ struct Action {
 
 impl List {
     fn new(title: &str) -> Self {
-        List { title: title.to_string(), items: Vec::new(), notes: String::new() }
+        List { title: title.to_string(), items: Vec::new(), notes: String::new(), next_id: 1 }
     }
 
     /// Reads the state this module wrote last frame; anything unreadable is an empty list, and anything over a limit is cut back to it.
@@ -56,10 +62,25 @@ impl List {
             item.text = clip(&item.text, MAX_ITEM);
         }
         list.notes = clip(&list.notes, MAX_NOTES);
+        list.assign_missing_ids();
         if list.title.is_empty() {
             list.title = DEFAULT_TITLE.to_string();
         }
         list
+    }
+
+    /// A state written before items had ids, or a hand-edited one, gets unique ids filled in; existing unique ids are kept.
+    fn assign_missing_ids(&mut self) {
+        let mut seen = std::collections::HashSet::new();
+        let mut next = self.items.iter().map(|i| i.id).max().unwrap_or(0).max(self.next_id.saturating_sub(1)) + 1;
+        for item in &mut self.items {
+            if item.id == 0 || !seen.insert(item.id) {
+                item.id = next;
+                next += 1;
+                seen.insert(item.id);
+            }
+        }
+        self.next_id = next;
     }
 
     pub fn state(&self) -> String {
@@ -100,8 +121,8 @@ fn launch(text: &str) -> Frame {
 
 fn act(mut list: List, action: &str) -> Frame {
     let result = match action.split_once(':') {
-        Some(("t", n)) => index(&list, n).map(|i| list.items[i].done = !list.items[i].done),
-        Some(("x", n)) => index(&list, n).map(|i| drop(list.items.remove(i))),
+        Some(("t", n)) => position(&list, n).map(|i| list.items[i].done = !list.items[i].done),
+        Some(("x", n)) => position(&list, n).map(|i| drop(list.items.remove(i))),
         Some(("add", text)) => add(&mut list, text),
         Some(("title", text)) => set_title(&mut list, text),
         Some(("notes", text)) => set_notes(&mut list, text),
@@ -111,12 +132,10 @@ fn act(mut list: List, action: &str) -> Frame {
     Frame { list, status: result.err() }
 }
 
-/// A tap names an item by position; a stale tap on a slot that has since gone is ignored, not an error to shout about.
-fn index(list: &List, raw: &str) -> Result<usize, String> {
-    match raw.trim().parse::<usize>() {
-        Ok(i) if i < list.items.len() => Ok(i),
-        _ => Err("that item is already gone".to_string()),
-    }
+/// A tap names an item by its stable id; a stale tap on an item that has since gone is reported, not applied to a neighbour.
+fn position(list: &List, raw: &str) -> Result<usize, String> {
+    let id = raw.trim().parse::<u32>().ok();
+    id.and_then(|id| list.items.iter().position(|i| i.id == id)).ok_or_else(|| "that item is already gone".to_string())
 }
 
 fn add(list: &mut List, raw: &str) -> Result<(), String> {
@@ -128,7 +147,9 @@ fn add(list: &mut List, raw: &str) -> Result<(), String> {
     if list.items.len() >= MAX_ITEMS {
         return Err(format!("the list is full ({MAX_ITEMS} items) - remove or clear some first"));
     }
-    list.items.push(Item { text, done: false });
+    let id = list.next_id.max(1);
+    list.next_id = id.saturating_add(1);
+    list.items.push(Item { text, done: false, id });
     Ok(())
 }
 
@@ -178,8 +199,13 @@ mod tests {
 
     fn with(items: &[(&str, bool)]) -> List {
         let mut list = List::new("Trip");
-        list.items = items.iter().map(|(s, d)| Item { text: s.to_string(), done: *d }).collect();
+        list.items = items.iter().zip(1..).map(|((s, d), id)| Item { text: s.to_string(), done: *d, id }).collect();
+        list.next_id = items.len() as u32 + 1;
         list
+    }
+
+    fn texts(list: &List) -> Vec<&str> {
+        list.items.iter().map(|i| i.text.as_str()).collect()
     }
 
     #[test]
@@ -209,7 +235,7 @@ mod tests {
     #[test]
     fn add_appends_an_unticked_item() {
         let f = run(&with(&[]), "add:milk");
-        assert_eq!(f.list.items, vec![Item { text: "milk".into(), done: false }]);
+        assert_eq!(f.list.items, vec![Item { text: "milk".into(), done: false, id: 1 }]);
         assert!(f.status.is_none());
     }
 
@@ -256,16 +282,16 @@ mod tests {
     #[test]
     fn tap_ticks_then_unticks() {
         let list = with(&[("a", false), ("b", false)]);
-        let ticked = run(&list, "t:1");
+        let ticked = run(&list, "t:2");
         assert_eq!(ticked.list.items.iter().map(|i| i.done).collect::<Vec<_>>(), [false, true]);
-        let unticked = run(&ticked.list, "t:1");
+        let unticked = run(&ticked.list, "t:2");
         assert!(!unticked.list.items[1].done);
     }
 
     #[test]
     fn tap_on_a_missing_item_changes_nothing_and_says_so() {
         let list = with(&[("a", false)]);
-        for action in ["t:5", "t:x", "t:", "x:9", "x:-1"] {
+        for action in ["t:5", "t:x", "t:", "x:9", "x:-1", "t:0"] {
             let f = run(&list, action);
             assert_eq!(f.list, list, "{action}");
             assert!(f.status.is_some(), "{action}");
@@ -273,15 +299,52 @@ mod tests {
     }
 
     #[test]
+    fn a_stale_tap_after_another_removal_does_not_hit_a_neighbour() {
+        let list = with(&[("milk", false), ("eggs", false), ("bread", false)]);
+        let after_bob = run(&list, "x:1").list;
+        let ann_taps_eggs_remove = run(&after_bob, "x:2");
+        assert_eq!(texts(&ann_taps_eggs_remove.list), ["bread"]);
+        let stale_again = run(&ann_taps_eggs_remove.list, "x:2");
+        assert_eq!(texts(&stale_again.list), ["bread"]);
+        assert!(stale_again.status.unwrap().contains("gone"));
+        let stale_tick = run(&after_bob, "t:1");
+        assert_eq!(stale_tick.list, after_bob);
+    }
+
+    #[test]
+    fn a_removed_items_id_is_never_reused() {
+        let removed = run(&with(&[("a", false), ("b", false)]), "x:2").list;
+        let added = run(&removed, "add:c").list;
+        assert_eq!(added.items.iter().map(|i| i.id).collect::<Vec<_>>(), [1, 3]);
+    }
+
+    #[test]
+    fn a_state_from_before_ids_gets_unique_ids_on_read() {
+        let old = r#"{"action":"t:1","state":"{\"t\":\"Trip\",\"i\":[{\"s\":\"a\",\"d\":false},{\"s\":\"b\",\"d\":false}],\"n\":\"\"}"}"#;
+        let f = checklist(old);
+        assert_eq!(f.list.items.iter().map(|i| i.id).collect::<Vec<_>>(), [1, 2]);
+        assert_eq!(f.list.items.iter().map(|i| i.done).collect::<Vec<_>>(), [true, false]);
+        assert_eq!(f.list.next_id, 3);
+    }
+
+    #[test]
+    fn duplicate_ids_in_a_state_are_made_unique() {
+        let mut list = with(&[("a", false), ("b", false)]);
+        list.items[1].id = 1;
+        let read = List::from_state(&list.state());
+        assert_ne!(read.items[0].id, read.items[1].id);
+    }
+
+    #[test]
     fn remove_drops_just_that_item() {
-        let f = run(&with(&[("a", false), ("b", true), ("c", false)]), "x:1");
+        let f = run(&with(&[("a", false), ("b", true), ("c", false)]), "x:2");
         assert_eq!(f.list.items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>(), ["a", "c"]);
     }
 
     #[test]
     fn clear_done_keeps_only_unticked_items() {
         let f = run(&with(&[("a", true), ("b", false), ("c", true)]), "clear done");
-        assert_eq!(f.list.items, vec![Item { text: "b".into(), done: false }]);
+        assert_eq!(f.list.items, vec![Item { text: "b".into(), done: false, id: 2 }]);
         assert!(f.status.is_none());
     }
 
@@ -339,7 +402,7 @@ mod tests {
     #[test]
     fn a_state_over_the_limits_is_cut_back_when_read() {
         let mut list = with(&[]);
-        list.items = (0..MAX_ITEMS + 5).map(|_| Item { text: "y".repeat(MAX_ITEM + 9), done: true }).collect();
+        list.items = (0..MAX_ITEMS as u32 + 5).map(|id| Item { text: "y".repeat(MAX_ITEM + 9), done: true, id: id + 1 }).collect();
         list.title = "z".repeat(MAX_TITLE + 9);
         list.notes = "n".repeat(MAX_NOTES + 9);
         let read = List::from_state(&list.state());
@@ -354,7 +417,7 @@ mod tests {
         let mut list = with(&[]);
         list.title = "\u{1F600}".repeat(MAX_TITLE);
         list.notes = "\"".repeat(MAX_NOTES);
-        list.items = (0..MAX_ITEMS).map(|_| Item { text: "\u{1F600}".repeat(MAX_ITEM), done: true }).collect();
+        list.items = (0..MAX_ITEMS as u32).map(|id| Item { text: "\u{1F600}".repeat(MAX_ITEM), done: true, id: id + 1 }).collect();
         assert!(list.state().len() < 8 * 1024, "{}", list.state().len());
     }
 

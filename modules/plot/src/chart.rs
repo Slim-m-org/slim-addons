@@ -88,8 +88,9 @@ fn render(data: &[(String, f64)]) -> String {
     // Room under the lowest bar for its value label, so it clears the category labels.
     let plot_bottom = if lo < 0.0 { axis_y - 5.0 } else { axis_y };
     // The zero line sits where value 0 falls; an all-zero chart (hi == lo) draws flat bars.
-    let scale = if hi > lo { (plot_bottom - top) / (hi - lo) } else { 0.0 };
-    let zero_y = if hi > lo { top + hi * scale } else { axis_y };
+    let ranged = (hi - lo) > f64::EPSILON;
+    let scale = if ranged { (plot_bottom - top) / (hi - lo) } else { 0.0 };
+    let zero_y = if ranged { top + hi * scale } else { axis_y };
     let slot = (width - 8.0) / n;
     let bar_w = slot * 0.66;
 
@@ -99,7 +100,7 @@ fn render(data: &[(String, f64)]) -> String {
     })];
     for (i, (label, value)) in data.iter().enumerate() {
         let x = 4.0 + i as f64 * slot + (slot - bar_w) / 2.0;
-        let h = value.abs() * scale;
+        let h = (value.abs() * scale).clamp(0.0, plot_bottom - top);
         let y = if *value < 0.0 { zero_y } else { zero_y - h };
         let label_y = if *value < 0.0 { y + h + 4.5 } else { y - 1.5 };
         ops.push(json!({
@@ -252,6 +253,20 @@ mod tests {
             assert!(scene.contains("1 value"), "{junk}: {scene}");
         }
         assert!(apply("bars", "inf, nan").is_err());
+    }
+
+    #[test]
+    fn a_subnormal_or_tiny_range_draws_flat_bars_not_null_coordinates() {
+        for input in ["1e-320", "1e-320, 2e-320", "a: 1e-300, b: 3e-300", "-1e-320"] {
+            let scene = apply("bars", input).unwrap();
+            assert!(!scene.contains("null"), "{input}: {scene}");
+        }
+    }
+
+    #[test]
+    fn a_huge_range_stays_finite() {
+        let scene = apply("bars", "a: 1e308, b: -1e308").unwrap();
+        assert!(!scene.contains("null"), "{scene}");
     }
 
     #[test]
