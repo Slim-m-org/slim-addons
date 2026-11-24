@@ -2,10 +2,17 @@
   "schema": 1,
   "id": "tic-tac-toe",
   "name": "Tic-tac-toe",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "summary": "Play tic-tac-toe in the channel.",
-  "description": "Launch a tic-tac-toe board from the apps menu (or type /tic-tac-toe) and play it in the channel, or add one to a voice canvas from its menu. The first person to move is X, the next different person is O, and moves out of turn are refused. Everyone else watches. Each message or canvas tile is its own game, and 'new game' restarts it. The board and the two players' opaque module ids are kept in the message or tile itself; the module stores nothing and learns nothing else about you.",
+  "description": "Launch a tic-tac-toe board from the apps menu (or type /tic-tac-toe) and play it in the channel, or add one to a voice canvas from its menu. The first person to move is X, the next different person is O, and moves out of turn are refused. Everyone else watches. Each message or canvas tile is its own game, and 'new game' restarts it. The board and the two players' opaque module ids are kept by the module in its own database (data.store, which an admin approves at install) and dropped a day after the last move; it learns nothing else about you.",
   "changelog": [
+    {
+      "version": "0.4.0",
+      "changes": [
+        "The board and the two seats are kept by the module, so a made-up state can no longer take both seats or rewrite the board. Needs the data.store approval in the Dock.",
+        "A game already in progress when this version is installed starts over on its next tap."
+      ]
+    },
     {
       "version": "0.3.0",
       "changes": [
@@ -49,8 +56,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/tic-tac-toe/0.3.0/module.wasm",
-    "sha256": "6014a59bd9f6b7f7ab19b1b34f904f03f373998f84272e8111ce85144e4274f9"
+    "path": "modules/tic-tac-toe/0.4.0/module.wasm",
+    "sha256": "e6e875ed19771f868d25217c4903d74e2ede31c2cb8f8fc64c753b6224075a5e"
   },
   "permissions": [
     {
@@ -60,7 +67,8 @@
     }
   ],
   "capabilities": [
-    "command.register"
+    "command.register",
+    "data.store"
   ],
   "extension_points": [
     {
@@ -84,5 +92,28 @@
       "description": "A shared tic-tac-toe board on the canvas."
     }
   ],
-  "addon_api": 6
+  "addon_api": 6,
+  "data": {
+    "max_mb": 1,
+    "tables": [
+      {
+        "name": "games",
+        "columns": [
+          {
+            "name": "k",
+            "type": "text",
+            "unique": true
+          },
+          {
+            "name": "state",
+            "type": "text"
+          },
+          {
+            "name": "at",
+            "type": "int"
+          }
+        ]
+      }
+    ]
+  }
 }

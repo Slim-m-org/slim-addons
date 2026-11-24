@@ -8,6 +8,7 @@
 use serde::Deserialize;
 
 use crate::board::{Board, View};
+use crate::held;
 use crate::host::Host;
 use crate::level::{self, Level, BEGINNER};
 use crate::rng::SplitMix64;
@@ -54,6 +55,8 @@ fn play<H: Host>(host: &H, input: &str, caller: &str, now_ms: i64) -> String {
     if let View::Scores(level) = board.view.clone() {
         return scores_view(host, &mut board, level, (&act.action, &caller), now_ms);
     }
+    let (mut board, trusted) = held::load(host, board);
+    let before = board.state();
     let mut note: Option<String> = None;
     let act_name = act.action.as_str();
     let can_reshape = board.is_host(&caller) || board.over();
@@ -86,6 +89,9 @@ fn play<H: Host>(host: &H, input: &str, caller: &str, now_ms: i64) -> String {
             }
             None => {}
         },
+    }
+    if board.state() != before {
+        held::save(host, &board, trusted, now_ms);
     }
     render(&board, now_ms, note.as_deref())
 }
@@ -355,6 +361,12 @@ mod shared_tests {
         scene["ops"].as_array().unwrap().iter().filter_map(|o| o["s"].as_str().map(str::to_owned)).collect()
     }
 
+    /// Has the module hold `board`, as it does for every frame it writes itself.
+    fn held(host: &FakeHost, board: &Board) -> String {
+        crate::held::save(host, board, true, 1_000);
+        board.state()
+    }
+
     fn launched_by(host: &FakeHost, caller: &str) -> Value {
         serde_json::from_str(&apply(host, "play", "", caller, 1_000).unwrap()).unwrap()
     }
@@ -430,16 +442,62 @@ mod shared_tests {
         let (mut before, last) = near_win(BEGINNER, "ann");
         before.note_player("bob");
         let (row, col) = (last / 9, last % 9);
-        let won = press(&host, &before.state(), &format!("c:{row},{col}"), "bob", 91_000);
+        let won = press(&host, &held(&host, &before), &format!("c:{row},{col}"), "bob", 91_000);
         assert!(won["status"].as_str().unwrap().starts_with("cleared in 1:30"), "{}", won["status"]);
         assert!(won["status"].as_str().unwrap().contains("new bests for 2 players"), "{}", won["status"]);
         assert_eq!(host.best_ms("beginner", "ann"), Some(90_000));
         assert_eq!(host.best_ms("beginner", "bob"), Some(90_000));
 
-        let calls = host.calls.get();
+        let scored = host.best.borrow().clone();
         let again = press(&host, &state(&won), &format!("c:{row},{col}"), "bob", 99_000);
-        assert_eq!(host.calls.get(), calls, "a frame after the win writes nothing");
+        assert_eq!(*host.best.borrow(), scored, "a frame after the win writes nothing");
         assert_eq!(again["status"], "cleared in 1:30");
+    }
+
+    #[test]
+    fn a_forged_near_win_state_is_not_scored() {
+        let host = FakeHost::default();
+        let (mut forged, last) = near_win(BEGINNER, "mallory");
+        forged.start_ms = Some(90_999);
+        for victim in ["ann", "bob"] {
+            forged.note_player(victim);
+        }
+        let won = press(&host, &forged.state(), &format!("c:{},{}", last / 9, last % 9), "mallory", 91_000);
+        assert!(won["status"].as_str().unwrap().contains("not scored"), "{}", won["status"]);
+        assert!(host.best.borrow().is_empty(), "nothing is written for a state the module did not write");
+    }
+
+    #[test]
+    fn a_fresh_state_cannot_carry_credited_players_or_a_clock() {
+        let host = FakeHost::default();
+        let mut fresh = Board::started_by(77, BEGINNER, "mallory");
+        fresh.players = vec!["ann".to_owned(), "bob".to_owned()];
+        fresh.start_ms = None;
+        let dug = press(&host, &fresh.state(), "c:4,4", "mallory", 5_000);
+        assert_eq!(Board::from_state(&state(&dug)).players, vec!["mallory".to_owned()]);
+    }
+
+    #[test]
+    fn a_win_replayed_through_real_frames_is_scored_from_the_held_clock() {
+        let host = FakeHost::default();
+        let (mut frame, mines) = {
+            let scene = launched_by(&host, "ann");
+            let board = Board::from_state(&state(&scene));
+            let mines = {
+                let mut b = Board::from_state(&state(&scene));
+                b.prepare_opening(40);
+                b.mines()
+            };
+            (press(&host, &board.state(), "c:4,4", "ann", 1_000), mines)
+        };
+        for index in (0..81).filter(|i| !mines[*i]) {
+            let echoed = state(&frame);
+            let mut tampered = Board::from_state(&echoed);
+            tampered.start_ms = Some(90_999);
+            host.calls.set(0);
+            frame = press(&host, &tampered.state(), &format!("c:{},{}", index / 9, index % 9), "ann", 91_000);
+        }
+        assert_eq!(host.best_ms("beginner", "ann"), Some(90_000), "{}", frame["status"]);
     }
 
     #[test]
@@ -447,7 +505,7 @@ mod shared_tests {
         let host = FakeHost::default();
         Scores::new(&host).record("beginner", "ann", 20_000, 1, 1).unwrap();
         let (before, last) = near_win(BEGINNER, "ann");
-        let won = press(&host, &before.state(), &format!("c:{},{}", last / 9, last % 9), "ann", 91_000);
+        let won = press(&host, &held(&host, &before), &format!("c:{},{}", last / 9, last % 9), "ann", 91_000);
         assert!(won["status"].as_str().unwrap().contains("no one beat their best"));
         assert_eq!(host.best_ms("beginner", "ann"), Some(20_000));
     }
@@ -457,7 +515,7 @@ mod shared_tests {
         let host = FakeHost::default();
         let (mut before, last) = near_win(BEGINNER, "ann");
         before.moves.clear();
-        let won = press(&host, &before.state(), &format!("c:{},{}", last / 9, last % 9), "ann", 91_000);
+        let won = press(&host, &held(&host, &before), &format!("c:{},{}", last / 9, last % 9), "ann", 91_000);
         assert!(won["status"].as_str().unwrap().contains("not scored"), "{}", won["status"]);
         assert!(host.best.borrow().is_empty());
     }
@@ -475,10 +533,11 @@ mod shared_tests {
     #[test]
     fn a_host_that_refuses_the_scoreboard_still_shows_the_win() {
         let host = FakeHost::default();
-        host.refuse.set(true);
         let (before, last) = near_win(BEGINNER, "ann");
-        let won = press(&host, &before.state(), &format!("c:{},{}", last / 9, last % 9), "ann", 91_000);
-        assert!(won["status"].as_str().unwrap().contains("An admin needs to approve"), "{}", won["status"]);
+        let state = held(&host, &before);
+        host.refuse.set(true);
+        let won = press(&host, &state, &format!("c:{},{}", last / 9, last % 9), "ann", 91_000);
+        assert!(won["status"].as_str().unwrap().contains("not scored"), "{}", won["status"]);
         assert!(won["ops"].as_array().unwrap().iter().any(|o| o["s"] == "You win!"));
     }
 
@@ -489,7 +548,7 @@ mod shared_tests {
         for n in 1..20 {
             before.note_player(&format!("p{n}"));
         }
-        let won = press(&host, &before.state(), &format!("c:{},{}", last / 30, last % 30), "p0", 600_000);
+        let won = press(&host, &held(&host, &before), &format!("c:{},{}", last / 30, last % 30), "p0", 600_000);
         assert!(won["status"].as_str().unwrap().contains("new bests for 8 players"), "{}", won["status"]);
         assert!(host.calls.get() <= 64);
     }

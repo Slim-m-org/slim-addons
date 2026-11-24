@@ -76,7 +76,7 @@
     {
       "name": "an unidentified caller cannot move",
       "steps": [
-        {"as": "not hex!", "do": "p0", "expect": {"status_has": "did not say who you are", "state": ".........|X||"}}
+        {"as": "not hex!", "do": "p0", "expect": {"status_has": "did not say who you are", "state_has": ".........|X|||"}}
       ]
     },
     {
@@ -100,12 +100,21 @@
       ]
     },
     {
-      "name": "two players answering from the same stale board: the last frame wins",
+      "name": "two players answering from the same stale board: the kept game wins over what the client echoes",
       "steps": [
         {"as": "a1", "do": "p0", "save": "opened"},
         {"as": "b2", "do": "p4", "save": "answered"},
-        {"as": "b2", "do": "p8", "state": "@opened", "expect": {"status": "X to move"}},
+        {"as": "b2", "do": "p8", "state": "@opened", "expect": {"status_has": "not your turn", "state_unchanged": true}},
         {"as": "a1", "do": "p1", "state": "@answered", "expect": {"status": "O to move"}}
+      ]
+    },
+    {
+      "name": "a made-up board or seat list is not believed",
+      "steps": [
+        {"as": "a1", "do": "p0"},
+        {"as": "b2", "do": "p3"},
+        {"as": "mal", "do": "p8", "state": "XXXOO....|X|mal|mal|0123456789abcdef", "expect": {"status_has": "no longer kept", "state_has": ".........|X|||"}},
+        {"as": "mal", "do": "p5", "expect": {"status_has": "to move"}}
       ]
     },
     {

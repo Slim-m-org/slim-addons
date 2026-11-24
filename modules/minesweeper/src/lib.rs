@@ -12,6 +12,7 @@ mod board;
 #[cfg(test)]
 mod fake;
 mod game;
+mod held;
 mod host;
 mod level;
 mod rng;

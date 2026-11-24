@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 pub const MAX_COMBATANTS: usize = 24;
 pub const MAX_NAME_CHARS: usize = 20;
+pub const MAX_ROUND: u32 = 9_999;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Combatant {
@@ -25,15 +26,25 @@ impl Default for Tracker {
     }
 }
 
+/// Strips control characters, then truncates and trims, so a name is the same however it arrived.
+fn clean_name(name: &str) -> String {
+    let name: String = name.chars().filter(|c| !c.is_control()).take(MAX_NAME_CHARS).collect();
+    name.trim().to_string()
+}
+
 impl Tracker {
     /// Reads the state a scene handed back; anything unreadable starts a fresh fight.
     pub fn from_state(state: &str) -> Tracker {
         let mut tracker: Tracker = serde_json::from_str(state).unwrap_or_default();
+        for c in &mut tracker.list {
+            c.name = clean_name(&c.name);
+        }
+        tracker.list.retain(|c| !c.name.is_empty());
         tracker.list.truncate(MAX_COMBATANTS);
         if tracker.turn >= tracker.list.len() {
             tracker.turn = 0;
         }
-        tracker.round = tracker.round.max(1);
+        tracker.round = tracker.round.clamp(1, MAX_ROUND);
         tracker
     }
 
@@ -46,8 +57,7 @@ impl Tracker {
     }
 
     pub fn add(&mut self, name: &str, init: i32) -> Result<(), String> {
-        let name: String = name.chars().filter(|c| !c.is_control()).take(MAX_NAME_CHARS).collect();
-        let name = name.trim().to_string();
+        let name = clean_name(name);
         if name.is_empty() {
             return Err("give the combatant a name".to_string());
         }
@@ -213,6 +223,20 @@ mod tests {
             t.add(&format!("g{i}"), 0).unwrap();
         }
         assert!(t.add("one more", 0).unwrap_err().contains("at most"));
+    }
+
+    #[test]
+    fn echoed_state_is_sanitised_and_capped_like_add() {
+        let long = "x".repeat(500);
+        let mut list: Vec<String> = (0..40).map(|i| format!(r#"{{"name":"n\u0007{i}","init":1}}"#)).collect();
+        list.insert(0, format!(r#"{{"name":"{long}","init":1}}"#));
+        list.insert(1, r#"{"name":"\u0000\u0001","init":1}"#.to_string());
+        let state = format!(r#"{{"list":[{}],"turn":0,"round":4000000000}}"#, list.join(","));
+        let t = Tracker::from_state(&state);
+        assert_eq!(t.list.len(), MAX_COMBATANTS);
+        assert!(t.list.iter().all(|c| c.name.chars().count() <= MAX_NAME_CHARS && !c.name.chars().any(char::is_control)));
+        assert!(t.list.iter().all(|c| !c.name.is_empty()));
+        assert_eq!(t.round, MAX_ROUND);
     }
 
     #[test]
