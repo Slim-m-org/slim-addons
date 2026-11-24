@@ -2,10 +2,16 @@
   "schema": 1,
   "id": "tabletop",
   "name": "Tabletop Kit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "summary": "Dice with advantage, an initiative tracker and short character sheets for tabletop games.",
   "description": "Three tools for a tabletop group. /r rolls dice notation like 2d6+3, 4d6kh3 (keep highest), 4d6dl1 (drop lowest) and the d20 shorthand adv and dis, and shows every die including the ones dropped. The Initiative Tracker app (or /tabletop) is a shared scene: type a name and initiative to add a combatant, sort the order, press next to pass the turn and tap a row to jump to it or its x to remove it. /sheet keeps a short character sheet per player - a name, hp and up to eight stats - and shows yours back. Sheets are stored with the kv.store capability, which an admin approves when installing; one sheet per member, kept under their module id, and the tracker and dice keep nothing.",
   "changelog": [
+    {
+      "version": "0.1.2",
+      "changes": [
+        "A full sheet store now says the store is full instead of asking for the kv.store capability."
+      ]
+    },
     {
       "version": "0.1.1",
       "changes": [
@@ -31,8 +37,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/tabletop/0.1.1/module.wasm",
-    "sha256": "37ae3915bd2fc9bad93ceae61fb4fe5be703490e7371954313ab91504abffc92"
+    "path": "modules/tabletop/0.1.2/module.wasm",
+    "sha256": "f26f6f59bd0e2f0524d0a0b3ddd598599a8823519b04ded8da4da2d978898f33"
   },
   "permissions": [
     {

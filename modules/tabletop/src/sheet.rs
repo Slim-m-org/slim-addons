@@ -1,6 +1,6 @@
 //! One short character sheet per player, kept in `kv.store` under the caller's
-//! opaque id. A sheet stays under 256 bytes, so 256 players fit in the 64 KiB
-//! a module may hold.
+//! opaque id. A sheet stays under 256 bytes, but the 64 KiB a module may hold
+//! is shared with a 70 byte key per player, so the worst case fits fewer than 256.
 
 use std::collections::BTreeMap;
 
@@ -44,6 +44,9 @@ fn load(kv: &dyn Kv, key: &str) -> Result<Option<Sheet>, String> {
 }
 
 fn unavailable(reason: String) -> String {
+    if reason.contains("is full") {
+        return "the sheet store is full - ask someone to /sheet clear an old sheet, then try again".to_string();
+    }
     format!("sheets need the kv.store capability, which an admin approves for this module ({reason})")
 }
 
@@ -246,6 +249,15 @@ mod tests {
     }
 
     #[test]
+    fn a_full_store_says_so_instead_of_asking_for_a_capability() {
+        let kv = MemKv::default();
+        kv.full.set(true);
+        let err = run(&kv, ALICE, "name Aria").unwrap_err();
+        assert!(err.contains("sheet store is full"), "{err}");
+        assert!(!err.contains("capability"), "{err}");
+    }
+
+    #[test]
     fn an_edit_costs_two_store_calls_and_a_show_one() {
         let kv = MemKv::default();
         run(&kv, ALICE, "name Aria").unwrap();
@@ -255,9 +267,9 @@ mod tests {
     }
 
     #[test]
-    fn the_largest_sheet_is_small_enough_for_256_players_in_64_kib() {
+    fn the_largest_sheet_with_a_real_caller_id_still_fits_two_hundred_players_in_64_kib() {
         let kv = MemKv::default();
-        let caller = "f".repeat(32);
+        let caller = "f".repeat(MAX_CALLER_CHARS);
         run(&kv, &caller, &format!("name {}", "W".repeat(40))).unwrap();
         for i in 0..MAX_STATS {
             run(&kv, &caller, &format!("set stat{i}xyz 9999")).unwrap();
@@ -265,8 +277,10 @@ mod tests {
         run(&kv, &caller, "hp 9999/9999").unwrap();
         let map = kv.map.borrow();
         let (k, v) = map.iter().next().unwrap();
+        assert_eq!(k.len(), "sheet:".len() + MAX_CALLER_CHARS);
         assert!(v.len() <= MAX_SHEET_BYTES, "{} bytes", v.len());
-        assert!(256 * (k.len() + v.len()) <= 64 * 1024, "{} bytes", 256 * (k.len() + v.len()));
+        let players = 64 * 1024 / (k.len() + v.len());
+        assert!(players >= 200, "only {players} worst-case sheets fit");
     }
 
     #[test]

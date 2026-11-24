@@ -22,8 +22,8 @@ pub fn render(frame: &Frame) -> String {
         ops.push(text(MARGIN + 3.0, y + 6.0, "nothing here yet - add the first item", "muted", 4.0, "left"));
         y += ROW;
     }
-    for (i, item) in list.items.iter().enumerate() {
-        item_row(&mut ops, i, &item.text, item.done, y);
+    for item in &list.items {
+        item_row(&mut ops, item.id, &item.text, item.done, y);
         y += ROW;
     }
 
@@ -75,11 +75,11 @@ fn summary(list: &List) -> String {
     }
 }
 
-fn item_row(ops: &mut Vec<Value>, index: usize, label: &str, done: bool, y: f64) {
+fn item_row(ops: &mut Vec<Value>, id: u32, label: &str, done: bool, y: f64) {
     let tone = if done { "muted" } else { "text" };
     ops.push(json!({
         "op": "rect", "x": MARGIN, "y": y, "w": WIDTH - 2.0 * MARGIN - 12.0, "h": ROW - 1.0,
-        "fill": "sunken", "r": 2, "tap": format!("t:{index}")
+        "fill": "sunken", "r": 2, "tap": format!("t:{id}")
     }));
     let box_fill = if done { "accent" } else { "surface" };
     ops.push(json!({
@@ -92,14 +92,14 @@ fn item_row(ops: &mut Vec<Value>, index: usize, label: &str, done: bool, y: f64)
         let x2 = x1 + label.chars().count() as f64 * CHAR_WIDTH;
         ops.push(json!({"op": "line", "x1": x1, "y1": y + 4.2, "x2": x2, "y2": y + 4.2, "stroke": "muted", "sw": 0.5}));
     }
-    remove_button(ops, index, y);
+    remove_button(ops, id, y);
 }
 
-fn remove_button(ops: &mut Vec<Value>, index: usize, y: f64) {
+fn remove_button(ops: &mut Vec<Value>, id: u32, y: f64) {
     let x = WIDTH - MARGIN - 10.0;
     ops.push(json!({
         "op": "rect", "x": x, "y": y, "w": 10, "h": ROW - 1.0,
-        "fill": "sunken", "r": 2, "tap": format!("x:{index}")
+        "fill": "sunken", "r": 2, "tap": format!("x:{id}")
     }));
     let (cx, cy) = (x + 5.0, y + (ROW - 1.0) / 2.0);
     for (dx, dy) in [(1.0, 1.0), (1.0, -1.0)] {
@@ -161,8 +161,9 @@ mod tests {
     fn list(items: &[(&str, bool)]) -> List {
         List {
             title: "Trip".into(),
-            items: items.iter().map(|(s, d)| Item { text: s.to_string(), done: *d }).collect(),
+            items: items.iter().zip(1..).map(|((s, d), id)| Item { text: s.to_string(), done: *d, id }).collect(),
             notes: String::new(),
+            next_id: items.len() as u32 + 1,
         }
     }
 
@@ -184,7 +185,16 @@ mod tests {
     fn every_item_has_a_tick_and_a_remove_tap() {
         let s = scene(list(&[("a", false), ("b", true)]), None);
         let taps: Vec<&str> = ops_of(&s, "rect").iter().filter_map(|o| o["tap"].as_str()).collect();
-        assert_eq!(taps, ["t:0", "x:0", "t:1", "x:1"]);
+        assert_eq!(taps, ["t:1", "x:1", "t:2", "x:2"]);
+    }
+
+    #[test]
+    fn taps_name_the_stable_id_not_the_position() {
+        let mut l = list(&[("a", false), ("b", false)]);
+        l.items.remove(0);
+        let s = scene(l, None);
+        let taps: Vec<&str> = ops_of(&s, "rect").iter().filter_map(|o| o["tap"].as_str()).collect();
+        assert_eq!(taps, ["t:2", "x:2"]);
     }
 
     #[test]
@@ -208,7 +218,7 @@ mod tests {
     #[test]
     fn a_full_list_with_full_notes_stays_a_small_scene_with_a_sane_shape() {
         let mut l = list(&[]);
-        l.items = (0..MAX_ITEMS).map(|_| Item { text: "w".repeat(MAX_ITEM), done: true }).collect();
+        l.items = (0..MAX_ITEMS as u32).map(|id| Item { text: "w".repeat(MAX_ITEM), done: true, id: id + 1 }).collect();
         l.notes = "word ".repeat(MAX_NOTES / 5);
         let raw = render(&Frame { list: l, status: None });
         assert!(raw.len() < 32 * 1024, "{}", raw.len());

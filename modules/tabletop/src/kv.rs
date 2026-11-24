@@ -70,6 +70,7 @@ mod memory {
         pub map: RefCell<BTreeMap<String, String>>,
         pub calls: Cell<u32>,
         pub down: Cell<bool>,
+        pub full: Cell<bool>,
     }
 
     impl MemKv {
@@ -90,6 +91,9 @@ mod memory {
 
         fn set(&self, key: &str, value: &str) -> Result<(), String> {
             self.enter()?;
+            if self.full.get() {
+                return Err("kv.store is full for this module".to_string());
+            }
             self.map.borrow_mut().insert(key.to_string(), value.to_string());
             Ok(())
         }
