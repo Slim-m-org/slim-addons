@@ -269,10 +269,13 @@ fn tick(host: &dyn Host, call: &Call) -> Outcome {
     if call.now_ms + EARLY_SLACK_MS < event.rem {
         return with_timer("Not yet.".to_owned(), id, &event, call.now_ms);
     }
-    host.post(&reminder_text(&event, call.now_ms)).map_err(|e| format!("could not post the reminder: {e}"))?;
+    let posted = host.post(&reminder_text(&event, call.now_ms));
     event.r = true;
     store::save(host, id, &event)?;
-    plain("Posted the reminder.".to_owned())
+    match posted {
+        Ok(()) => plain("Posted the reminder.".to_owned()),
+        Err(why) => plain(format!("The reminder was refused ({why}); it will not be retried.")),
+    }
 }
 
 fn reminder_text(event: &Event, now_ms: i64) -> String {
