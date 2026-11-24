@@ -26,8 +26,8 @@ def wasmi_versions(lock_text):
 def read_slim_lock(path):
     if path is not None:
         lock = pathlib.Path(path).resolve()
-        if lock.name != "Cargo.lock" or not lock.is_file():
-            raise SystemExit(f"--slim-lock must name a Cargo.lock file, got {path}")
+        if lock.suffix != ".lock" or not lock.is_file():
+            raise SystemExit(f"--slim-lock must name a .lock file, got {path}")
         return lock.read_text()
     with urllib.request.urlopen(SLIM_LOCK, timeout=TIMEOUT_SECONDS) as answer:
         return answer.read().decode()
