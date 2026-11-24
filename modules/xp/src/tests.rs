@@ -336,3 +336,21 @@ fn calls_that_close_out_of_join_order_are_all_read_when_a_backlog_spans_runs() {
     assert_eq!(host.cursor(), 60, "the cursor is a place in close order, never a session id");
     assert!((1..=60).all(|id| host.xp_of(&format!("user{id}")) == 10), "every call paid exactly once");
 }
+
+#[test]
+fn a_refused_batch_insert_does_not_push_the_pass_past_the_call_budget() {
+    let host = FakeHost::default();
+    for i in 0..60 {
+        host.push_session(i + 1, &format!("user{i:02}"), 0, 10 * MIN, 0);
+    }
+    *host.raced_member.borrow_mut() = Some("user00".to_string());
+    let first = run(&host, "catchup", json!(""), json!({}));
+    assert_eq!(first["ok"], true, "{first}");
+    assert!(host.calls.get() <= crate::store::CALLS_PER_RUN, "the pass made {} calls", host.calls.get());
+
+    for _ in 0..5 {
+        run(&host, "catchup", json!(""), json!({}));
+    }
+    assert_eq!(host.cursor(), 60);
+    assert!((0..60).all(|i| host.xp_of(&format!("user{i:02}")) == 50), "a session was missed or paid twice");
+}

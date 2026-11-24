@@ -15,6 +15,8 @@ use crate::store::Store;
 const CALLS_PER_MEMBER: u32 = 1;
 /// Calls a pass spends besides the members: the log read, the rows of the members, the new rows and the cursor write.
 const CALLS_PER_PASS: u32 = 4;
+/// The call kept back for the cursor write, which a refused batch insert's one-by-one fallback can otherwise eat.
+const CURSOR_WRITE: u32 = 1;
 /// The most members one pass handles, the most rows one insert takes.
 const MAX_MEMBERS_PER_PASS: u32 = 50;
 /// A total never grows by more than this in one write; the host refuses larger increments.
@@ -39,7 +41,9 @@ pub fn catch_up<H: Host>(store: &Store<H>, settings: &Settings) -> Result<Report
         if next <= report.cursor {
             break;
         }
-        award_batch(store, settings, &rows)?;
+        if !award_batch(store, settings, &rows)? {
+            break;
+        }
         store.set_cursor(next)?;
         report.sessions += rows.len();
         report.cursor = next;
@@ -58,7 +62,8 @@ fn group_by_member(rows: &[Session]) -> Vec<(String, Vec<&Session>)> {
     groups
 }
 
-fn award_batch<H: Host>(store: &Store<H>, settings: &Settings, batch: &[Session]) -> Result<(), String> {
+/// False when the budget ran out part way, which leaves the cursor for the next run: each payment is idempotent.
+fn award_batch<H: Host>(store: &Store<H>, settings: &Settings, batch: &[Session]) -> Result<bool, String> {
     let people: Vec<Session> = batch.iter().filter(|s| !s.is_bot).cloned().collect();
     let groups = group_by_member(&people);
     let users: Vec<String> = groups.iter().map(|(user, _)| user.clone()).collect();
@@ -66,10 +71,13 @@ fn award_batch<H: Host>(store: &Store<H>, settings: &Settings, batch: &[Session]
     let missing: Vec<String> = users.iter().filter(|user| !existing.contains_key(*user)).cloned().collect();
     store.create_members(&missing)?;
     for (user, sessions) in &groups {
+        if store.calls_left() <= CURSOR_WRITE {
+            return Ok(false);
+        }
         let taken = existing.get(user).map_or(0, |member| member.last_session);
         award_member(store, settings, user, sessions, taken)?;
     }
-    Ok(())
+    Ok(true)
 }
 
 fn award_member<H: Host>(store: &Store<H>, settings: &Settings, user: &str, sessions: &[&Session], taken: i64) -> Result<(), String> {

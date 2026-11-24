@@ -19,6 +19,8 @@ pub struct FakeHost {
     pub calls: Cell<u32>,
     /// Refuse every call whose request has this `op` (or `capability`), once armed.
     pub fail_op: RefCell<Option<String>>,
+    /// A member whose row a concurrent run makes just before the next batch insert, so that insert is refused.
+    pub raced_member: RefCell<Option<String>>,
 }
 
 impl FakeHost {
@@ -78,7 +80,7 @@ fn row(user: &str, xp: i64) -> Row {
 }
 
 fn matches(row: &Row, filters: &Value) -> bool {
-    filters.as_array().map_or(true, |all| {
+    filters.as_array().is_none_or(|all| {
         all.iter().all(|f| {
             let (cell, val) = (&row[f["col"].as_str().unwrap()], &f["val"]);
             match f["op"].as_str().unwrap() {
@@ -143,6 +145,9 @@ impl FakeHost {
         let mut out: Vec<Row> = Vec::new();
         match request["op"].as_str().unwrap() {
             "insert" => {
+                if let Some(user) = self.raced_member.borrow_mut().take() {
+                    rows.push(row(&user, 0));
+                }
                 let batch: Vec<Row> = match request.get("rows") {
                     Some(rows) => rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect(),
                     None => vec![request["values"].as_object().unwrap().clone()],
