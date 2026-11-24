@@ -1,11 +1,14 @@
 //! Tic-tac-toe: the whole interactive scene loop in one small module. Every
-//! frame is a fresh sandboxed call - the board rides in the scene's opaque
-//! `state`, a tap on a cell arrives as an action, and the module returns the
-//! next frame. No host storage, no memory between calls.
+//! frame is a fresh sandboxed call - a tap on a cell arrives as an action and
+//! the module returns the next frame. The board and the two seats are kept in
+//! the module's own database under a game id; the scene's `state` carries that
+//! id, and nothing else in it is believed.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::held;
+use crate::host::Host;
 use crate::seats::{Refusal, Seats};
 
 const LINES: [[usize; 3]; 8] = [
@@ -19,29 +22,43 @@ const LINES: [[usize; 3]; 8] = [
     [2, 4, 6],
 ];
 
-pub fn apply(command: &str, input: &str, caller: &str) -> Result<String, String> {
+pub fn apply<H: Host>(host: &H, command: &str, input: &str, caller: &str, now_ms: i64) -> Result<String, String> {
     match command {
-        "play" => Ok(play(input, caller)),
+        "play" => Ok(play(host, input, caller, now_ms)),
         other => Err(format!("unknown command: {other}")),
     }
 }
 
-fn play(input: &str, caller: &str) -> String {
+fn play<H: Host>(host: &H, input: &str, caller: &str, now_ms: i64) -> String {
     let trimmed = input.trim();
     // The launch runs with empty input: start a fresh board.
     if trimmed.is_empty() {
-        return render(&Game::new(), None);
+        return render(&Game::untouched(held::new_id(caller, now_ms, "")), None);
     }
     // Otherwise it is an interactive frame: {action, state}.
-    let (action, mut game) = match serde_json::from_str::<Action>(trimmed) {
-        Ok(a) => (a.action, Game::from_state(&a.state)),
-        Err(_) => (String::new(), Game::new()),
+    let Ok(act) = serde_json::from_str::<Action>(trimmed) else {
+        return render(&Game::untouched(held::new_id(caller, now_ms, trimmed)), None);
     };
+    let echoed = Game::from_state(&act.state);
+    let mut game = if echoed.is_untouched() {
+        Game::untouched(if held::valid_id(&echoed.id) { echoed.id.clone() } else { held::new_id(caller, now_ms, "") })
+    } else {
+        match held::load(host, &echoed.id) {
+            Ok(Some(stored)) => Game::from_state(&stored),
+            Ok(None) => {
+                let lost = Refusal::Illegal("that game is no longer kept, so this is a new one");
+                return render(&Game::untouched(held::new_id(caller, now_ms, &echoed.id)), Some(lost));
+            }
+            Err(_) => return render(&echoed, Some(Refusal::Illegal("the game could not be reached, try again"))),
+        }
+    };
+    let before = game.state();
+    let was_untouched = game.is_untouched();
     let mut note = None;
-    match action.as_str() {
+    match act.action.as_str() {
         "new game" | "new" => {
             if game.seats.may_reset(caller, game.over()) {
-                game = Game::new();
+                game = Game::untouched(held::new_id(caller, now_ms, &game.id));
             } else {
                 note = Some(Refusal::Illegal("only a player can restart a game in progress"));
             }
@@ -53,6 +70,13 @@ fn play(input: &str, caller: &str) -> String {
             }
         }
         _ => {}
+    }
+    if game.state() != before && !game.is_untouched() {
+        let state = |id: &str| game.with_id(id).state();
+        match held::store(host, &game.id, &state, was_untouched, now_ms) {
+            Ok(id) => game.id = id,
+            Err(_) => return render(&Game::from_state(&before), Some(Refusal::Illegal("the move could not be kept, try again"))),
+        }
     }
     render(&game, note)
 }
@@ -68,22 +92,34 @@ struct Game {
     cells: [char; 9],
     turn: char,
     seats: Seats,
+    id: String,
 }
 
 impl Game {
-    fn new() -> Self {
+    /// An empty board with nobody seated, which is all a client may bring to a game: the board and
+    /// seats of a game in progress come from the record this module kept.
+    fn untouched(id: String) -> Self {
         Game {
             cells: ['.'; 9],
             turn: 'X',
             seats: Seats::default(),
+            id,
         }
     }
 
-    /// Rebuilds a game from the opaque `state` string this module wrote last
-    /// frame: nine board chars, whose turn it is, then the two seat ids, all
-    /// `|` separated.
+    fn is_untouched(&self) -> bool {
+        self.cells.iter().all(|c| *c == '.')
+    }
+
+    fn with_id(&self, id: &str) -> Game {
+        Game { cells: self.cells, turn: self.turn, seats: self.seats.clone(), id: id.to_owned() }
+    }
+
+    /// Reads the `state` string this module wrote: nine board chars, whose turn it is, the two
+    /// seat ids, then the game id, all `|` separated. A client may echo anything here, so a
+    /// caller trusts only the id of what this returns.
     fn from_state(s: &str) -> Self {
-        let mut parts = s.splitn(4, '|');
+        let mut parts = s.splitn(5, '|');
         let board = parts.next().unwrap_or("");
         let turn = parts.next().unwrap_or("X");
         let seats = Seats::parse(parts.next().unwrap_or(""), parts.next().unwrap_or(""));
@@ -98,12 +134,13 @@ impl Game {
             .next()
             .filter(|c| *c == 'X' || *c == 'O')
             .unwrap_or('X');
-        Game { cells, turn, seats }
+        let id = Some(parts.next().unwrap_or("")).filter(|id| held::valid_id(id)).unwrap_or("");
+        Game { cells, turn, seats, id: id.to_owned() }
     }
 
     fn state(&self) -> String {
         let board: String = self.cells.iter().collect();
-        format!("{board}|{}|{}|{}", self.turn, self.seats.first(), self.seats.second())
+        format!("{board}|{}|{}|{}|{}", self.turn, self.seats.first(), self.seats.second(), self.id)
     }
 
     fn winner(&self) -> Option<char> {
@@ -209,17 +246,34 @@ fn render(game: &Game, note: Option<Refusal>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fake::FakeHost;
+
+    thread_local! {
+        static HOST: FakeHost = FakeHost::default();
+    }
+
+    /// One run against this test's own in-memory slim, with the call budget a real run gets.
+    fn apply(command: &str, input: &str, caller: &str) -> Result<String, String> {
+        HOST.with(|host| {
+            host.calls.set(0);
+            super::apply(host, command, input, caller, 1_000)
+        })
+    }
+
+    fn fresh() -> Game {
+        Game::untouched(String::new())
+    }
 
     #[test]
     fn a_fresh_game_is_empty_with_x_to_move() {
-        let g = Game::new();
+        let g = fresh();
         assert_eq!(g.turn, 'X');
         assert!(g.cells.iter().all(|c| *c == '.'));
     }
 
     #[test]
     fn state_round_trips() {
-        let mut g = Game::new();
+        let mut g = fresh();
         g.mark(0);
         g.mark(4);
         let g2 = Game::from_state(&g.state());
@@ -229,7 +283,7 @@ mod tests {
 
     #[test]
     fn marking_places_the_current_mark_and_swaps_the_turn() {
-        let mut g = Game::new();
+        let mut g = fresh();
         g.mark(4);
         assert_eq!(g.cells[4], 'X');
         assert_eq!(g.turn, 'O');
@@ -237,7 +291,7 @@ mod tests {
 
     #[test]
     fn a_taken_cell_cannot_be_overwritten() {
-        let mut g = Game::new();
+        let mut g = fresh();
         g.mark(4);
         g.mark(4);
         assert_eq!(g.cells[4], 'X');
@@ -246,7 +300,7 @@ mod tests {
 
     #[test]
     fn a_row_wins_and_freezes_the_board() {
-        let mut g = Game::new();
+        let mut g = fresh();
         for i in [0, 3, 1, 4, 2] {
             g.mark(i); // X:0, O:3, X:1, O:4, X:2 -> X takes the top row
         }
@@ -261,7 +315,7 @@ mod tests {
 
     /// Plays `(caller, cell)` moves in order and returns the final state string.
     fn run(moves: &[(&str, usize)]) -> String {
-        let mut state = Game::new().state();
+        let mut state = fresh().state();
         for (who, cell) in moves {
             let input = format!(r#"{{"action":"p{cell}","state":"{state}"}}"#);
             let out = apply("play", &input, who).unwrap();
@@ -288,15 +342,16 @@ mod tests {
         let initial = apply("play", "", A).unwrap();
         assert!(initial.contains(r#""$slim":"scene/1""#));
         assert!(initial.contains("X to move"));
-        let after = apply("play", r#"{"action":"p4","state":".........|X||"}"#, A).unwrap();
+        let after = apply("play", r#"{"action":"p4","state":".........|X|||"}"#, A).unwrap();
         assert!(after.contains("O to move"));
     }
 
     #[test]
     fn new_game_resets_from_any_state() {
-        let out = apply("play", r#"{"action":"new game","state":"XXXOO....|X||"}"#, A).unwrap();
+        let state = run(&[(A, 0), (B, 1)]);
+        let out = apply("play", &format!(r#"{{"action":"new game","state":"{state}"}}"#), A).unwrap();
         assert!(out.contains("X to move"));
-        assert!(out.contains(r#""state":".........|X||""#));
+        assert!(scene_state(&out).starts_with(".........|X|||"));
     }
 
     #[test]
@@ -354,7 +409,7 @@ mod tests {
 
     #[test]
     fn an_unidentified_caller_cannot_move() {
-        let out = apply("play", r#"{"action":"p0","state":".........|X||"}"#, "").unwrap();
+        let out = apply("play", r#"{"action":"p0","state":".........|X|||"}"#, "").unwrap();
         assert!(out.contains("did not say who you are"));
     }
 
@@ -363,19 +418,95 @@ mod tests {
         let state = run(&[(A, 0), (B, 1)]);
         let input = format!(r#"{{"action":"new game","state":"{state}"}}"#);
         assert!(apply("play", &input, C).unwrap().contains("only a player can restart"));
-        assert!(apply("play", &input, A).unwrap().contains(r#""state":".........|X||""#));
+        assert!(apply("play", &input, A).unwrap().contains(r#""state":".........|X|||"#));
     }
 
     #[test]
     fn a_finished_game_can_be_restarted_by_anyone() {
         let state = run(&[(A, 0), (B, 3), (A, 1), (B, 4), (A, 2)]);
         let input = format!(r#"{{"action":"new game","state":"{state}"}}"#);
-        assert!(apply("play", &input, C).unwrap().contains(r#""state":".........|X||""#));
+        assert!(apply("play", &input, C).unwrap().contains(r#""state":".........|X|||"#));
     }
 
     #[test]
     fn the_same_inputs_give_the_same_board() {
         let moves = [(A, 4), (B, 0), (A, 8)];
-        assert_eq!(run(&moves), run(&moves));
+        let board = |state: String| state.split('|').take(4).collect::<Vec<_>>().join("|");
+        assert_eq!(board(run(&moves)), board(run(&moves)));
+    }
+
+    fn forged(board: &str, turn: char, first: &str, second: &str, id: &str) -> String {
+        format!("{board}|{turn}|{first}|{second}|{id}")
+    }
+
+    fn send(state: &str, action: &str, caller: &str) -> String {
+        let input = serde_json::json!({"action": action, "state": state}).to_string();
+        apply("play", &input, caller).unwrap()
+    }
+
+    fn status(scene: &str) -> String {
+        let v: Value = serde_json::from_str(scene).unwrap();
+        v["status"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn a_member_cannot_take_both_seats_by_forging_the_state() {
+        let state = run(&[(A, 4)]);
+        let id = state.rsplit('|').next().unwrap();
+        let both = forged("....X....", 'O', A, A, id);
+        assert!(status(&send(&both, "p0", A)).starts_with("not your turn"));
+        let seats_swapped = forged("....X....", 'O', C, C, id);
+        let out = send(&seats_swapped, "p0", C);
+        let kept = scene_state(&out);
+        assert_eq!((kept.split('|').nth(2), kept.split('|').nth(3)), (Some(A), Some(C)), "C is seated by the record, not by the forged seats");
+    }
+
+    #[test]
+    fn a_forged_board_is_not_believed() {
+        let state = run(&[(A, 0), (B, 3)]);
+        let id = state.rsplit('|').next().unwrap();
+        let winning = forged("XXXOO....", 'X', A, B, id);
+        let out = send(&winning, "p8", A);
+        assert!(!status(&out).contains("wins"), "{}", status(&out));
+        assert!(scene_state(&out).starts_with("X..O....X"), "{}", scene_state(&out));
+    }
+
+    #[test]
+    fn a_forged_state_with_an_unknown_game_id_starts_a_new_game_instead_of_being_adopted() {
+        let out = send(&forged("XXXOO....", 'X', A, B, "0123456789abcdef"), "p8", A);
+        assert!(status(&out).contains("no longer kept"), "{}", status(&out));
+        assert!(scene_state(&out).starts_with(".........|X|||"));
+        let legacy = send("XXXOO....|X|aa|bb", "p8", A);
+        assert!(status(&legacy).contains("no longer kept"));
+    }
+
+    #[test]
+    fn a_fresh_state_carries_no_seats_into_the_game() {
+        let out = send(&forged(".........", 'O', A, A, "0123456789abcdef"), "p4", C);
+        let state = scene_state(&out);
+        assert_eq!(state.split('|').nth(1), Some("O"), "a fresh board always starts with X: {state}");
+        assert_eq!(state.split('|').nth(2), Some(C));
+        assert_eq!(state.split('|').nth(3), Some(""));
+    }
+
+    #[test]
+    fn a_game_that_cannot_be_kept_refuses_the_move() {
+        HOST.with(|h| h.refuse.set(true));
+        let out = send(".........|X|||", "p4", A);
+        assert!(status(&out).contains("could not be kept"), "{}", status(&out));
+        assert!(scene_state(&out).starts_with(".........|"));
+        HOST.with(|h| h.refuse.set(false));
+    }
+
+    #[test]
+    fn two_launches_by_one_caller_keep_separate_games() {
+        let one = scene_state(&apply("play", "", A).unwrap());
+        let two = scene_state(&apply("play", "", A).unwrap());
+        let first = send(&one, "p0", A);
+        let second = send(&two, "p4", A);
+        assert!(scene_state(&first).starts_with("X........"));
+        assert!(scene_state(&second).starts_with("....X...."));
+        let again = send(&scene_state(&first), "p1", B);
+        assert!(scene_state(&again).starts_with("XO......."), "{}", scene_state(&again));
     }
 }

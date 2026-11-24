@@ -13,6 +13,7 @@ type Row = Map<String, Value>;
 pub struct FakeHost {
     pub best: RefCell<Vec<Row>>,
     pub names: RefCell<Vec<Row>>,
+    pub games: RefCell<Vec<Row>>,
     pub calls: Cell<u32>,
     /// Refuse every call once armed, as a host that has not approved `data.store` does.
     pub refuse: Cell<bool>,
@@ -36,6 +37,7 @@ fn matches(row: &Row, filters: &Value) -> bool {
             match f["op"].as_str().unwrap() {
                 "eq" => cell == val,
                 "in" => val.as_array().unwrap().contains(cell),
+                "lt" => cell.as_i64() < val.as_i64(),
                 other => panic!("the fake does not do {other}"),
             }
         })
@@ -51,7 +53,11 @@ impl Host for FakeHost {
         if self.calls.get() > 64 {
             return Err("data.store call budget for this run is exhausted".to_owned());
         }
-        let (table, unique) = if request["table"] == "best" { (&self.best, "k") } else { (&self.names, "player") };
+        let (table, unique) = match request["table"].as_str() {
+            Some("best") => (&self.best, "k"),
+            Some("games") => (&self.games, "k"),
+            _ => (&self.names, "player"),
+        };
         let mut rows = table.borrow_mut();
         let filters = &request["where"];
         let mut out: Vec<Row> = Vec::new();
@@ -78,6 +84,11 @@ impl Host for FakeHost {
                     r.extend(request["values"].as_object().unwrap().clone());
                     changed += 1;
                 }
+            }
+            "delete" => {
+                let before = rows.len();
+                rows.retain(|r| !matches(r, filters));
+                changed = before - rows.len();
             }
             "get" | "query" => {
                 out = rows.iter().filter(|r| matches(r, filters)).cloned().collect();

@@ -46,7 +46,7 @@
     {
       "id": "tic-tac-toe",
       "name": "Tic-tac-toe",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "summary": "Play tic-tac-toe in the channel."
     },
     {
@@ -64,7 +64,7 @@
     {
       "id": "minesweeper",
       "name": "Minesweeper",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "summary": "Clear a board together: a clock, right-click flags, three sizes, a win card and a scoreboard of the fastest times."
     },
     {

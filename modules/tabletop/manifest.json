@@ -9,7 +9,8 @@
     {
       "version": "0.1.2",
       "changes": [
-        "A full sheet store now says the store is full instead of asking for the kv.store capability."
+        "A full sheet store now says the store is full instead of asking for the kv.store capability.",
+        "The initiative tracker cleans combatant names and caps the round count again each time it reads its state, so a hand-made state cannot show long or garbled names."
       ]
     },
     {
@@ -38,7 +39,7 @@
   "artifact": {
     "kind": "wasm",
     "path": "modules/tabletop/0.1.2/module.wasm",
-    "sha256": "f26f6f59bd0e2f0524d0a0b3ddd598599a8823519b04ded8da4da2d978898f33"
+    "sha256": "bc9a067d054abe6c8c0a90d2cba2c07846e83441f250d46343f2ad519c660736"
   },
   "permissions": [
     {
