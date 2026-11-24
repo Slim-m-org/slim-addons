@@ -3,9 +3,9 @@
   "addon_api": 3,
   "id": "word-filter",
   "name": "Word filter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "summary": "Mask or block the words and patterns you list, before a message is stored.",
-  "description": "Checks every message as it is sent or edited, including bots, webhooks and other modules' posts. List words (matched as whole words, ignoring case) and regex patterns in the settings, then pick what happens: mask replaces each match with asterisks, block refuses the message and shows the sender your reason. Channels you list are left alone. The module sees only the message text and its channel, has no network, storage or posting, and runs inside a small time budget; patterns use a linear-time regex engine and are capped in number and size. If the filter fails, the message goes through unchanged and the failure shows on this page, unless you set the hook to refuse. Use /filter-test to try text against your rules without sending it.",
+  "description": "Checks every message as it is sent or edited, including bots, webhooks and other modules' posts. List words (matched as whole words, ignoring case) and regex patterns in the settings, then pick what happens: mask replaces each match with asterisks, block refuses the message and shows the sender your reason. Channels you list are left alone. The module sees only the message text and its channel, has no network, storage or posting, and runs inside a small time budget; patterns use a linear-time regex engine and are capped in number and size. A message too long to scan within the budget counts as a match. If the filter fails, the message goes through unchanged and the failure shows on this page, unless you set the hook to refuse. Use /filter-test to try text against your rules without sending it.",
   "author": "slim-m",
   "homepage": "https://github.com/Slim-m-org/slim-addons",
   "runtime": {
@@ -18,8 +18,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/word-filter/0.1.0/module.wasm",
-    "sha256": "f54c73914188788da8dff5d7009ac3ce9332447b72f65bda4d445b8fc8a88730"
+    "path": "modules/word-filter/0.1.1/module.wasm",
+    "sha256": "adf9a74a34295ecfc7e9e07c7b22030d30f9a13f36d312f0f1e881bd15ad8939"
   },
   "permissions": [
     {
@@ -78,7 +78,7 @@
       "key": "patterns",
       "type": "string",
       "label": "Patterns",
-      "help": "Up to 5 regexes, one per line, ignoring case. Use + and * rather than large {n,m} counts.",
+      "help": "Up to 5 regexes, one per line. Case folds for ASCII letters only, so put non-ASCII terms in Words. Use + and * rather than large {n,m} counts.",
       "default": ""
     },
     {

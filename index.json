@@ -166,7 +166,7 @@
     {
       "id": "word-filter",
       "name": "Word filter",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "Mask or block the words and patterns you list, before a message is stored."
     },
     {
