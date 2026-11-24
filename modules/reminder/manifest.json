@@ -2,10 +2,18 @@
   "schema": 1,
   "id": "reminder",
   "name": "Reminder",
-  "version": "0.1.1",
-  "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time.",
-  "description": "/remind 30m take the bread out sets a reminder for 30 minutes from now (m for minutes, h for hours, d for days, from one minute to 30 days). /reminders lists what is waiting and /unremind 2 cancels one by its number. When one comes due, Reminder posts it in the channel an admin picked, as Reminder, within about five minutes. Up to 20 reminders can wait in a space, each up to 200 characters, shared by everyone. It uses kv.store to remember them, schedule to check every five minutes for what is due, and message.post to say it in the channel: an admin approves each when installing, and picks the channel the reminders go to. It reads the host's clock (now_ms), so it needs a slim that provides one.",
+  "version": "0.2.0",
+  "summary": "Say when and what with /remind 30m take the bread out, and the channel you set it in is told when it is time.",
+  "description": "/remind 30m take the bread out sets a reminder for 30 minutes from now (m for minutes, h for hours, d for days, from one minute to 30 days). /reminders lists your own reminders and /unremind 2 cancels one of them by its number; nobody else can see or cancel them. When one comes due, Reminder posts it as Reminder in the channel it was set in, when it comes due, and only where Reminder is allowed to post. Each member can have 5 reminders waiting and a space up to 30, each up to 200 characters. It uses kv.store to remember them, schedule to wake each one at its time, and message.post to say it: an admin approves each when installing. A reminder set before this version has no channel and is still posted in the channel an admin picked. It reads the host's clock (now_ms), so it needs a slim that provides one.",
   "changelog": [
+    {
+      "version": "0.2.0",
+      "changes": [
+        "Reminders are now yours alone: /reminders lists and /unremind cancels only the ones you set.",
+        "A reminder is posted in the channel it was set in, not in one shared channel.",
+        "Each member can have 5 reminders waiting, so one member cannot fill the space."
+      ]
+    },
     {
       "version": "0.1.1",
       "changes": [
@@ -31,8 +39,8 @@
   },
   "artifact": {
     "kind": "wasm",
-    "path": "modules/reminder/0.1.1/module.wasm",
-    "sha256": "95021c76efaeb9d57bdf88e55f2f10c60f3f715597df3ae9470b8859e2b9a7cc"
+    "path": "modules/reminder/0.2.0/module.wasm",
+    "sha256": "1410243ef632cb6d49c2a941552533fb1154c8a2d39255a54a216580565a3abd"
   },
   "permissions": [
     {
@@ -104,5 +112,6 @@
       "permission": "timer",
       "description": "Post the reminders that have come due."
     }
-  ]
+  ],
+  "addon_api": 7
 }

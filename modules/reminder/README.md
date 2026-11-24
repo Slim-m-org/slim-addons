@@ -8,25 +8,28 @@ It is the reference module for the `schedule` capability and for the host's cloc
 | command | permission | what it does |
 | --- | --- | --- |
 | `/remind 30m text` | use | sets a reminder; `m`, `h` or `d`, from 1 minute to 30 days |
-| `/reminders` | use | lists what is waiting, soonest first, with how long is left |
+| `/reminders` | use | lists your reminders, soonest first, with how long is left |
 | `/unremind 2` | use | cancels a reminder by its number in that list |
-| `due` (no slash command) | timer | posts what has come due, now; the timer calls it, nobody needs to |
+| `due` (no slash command) | timer | posts what has come due, now; the timers call it, nobody needs to |
 
-Up to 20 reminders wait in a space at once, each up to 200 characters, shared by everyone.
+Each member can have 5 reminders waiting and a space up to 30, each up to 200 characters.
+A reminder belongs to the member who set it: `/reminders` lists only theirs and `/unremind` cancels only theirs.
+It is posted in the channel it was set in, by a timer armed for that reminder (add-on API 7), so text set in a private channel never reaches another one.
 A module is never told who is asking beyond an opaque id, so a reminder does not mention a person.
 Say who it is for in the text.
+A reminder set before owners were kept has no owner or channel; it is posted in the channel an admin picked and nobody can list it.
 
 ## Why it needs the capabilities it asks for
 
 | capability | what for |
 | --- | --- |
 | `kv.store` | remembers the reminders between runs; a module has no memory of its own |
-| `schedule` | the host runs `due` every 5 minutes with nobody invoking it |
-| `message.post` | `due` posts what is due, as Reminder, into the channel the admin picked |
+| `schedule` | the host runs `due` for each reminder at its time, and every 5 minutes for old ones with no channel |
+| `message.post` | `due` posts what is due, as Reminder, into the channel it was set in |
 
 The Dock install screen shows a switch for each, off by default, and a channel picker for the schedule.
 Nothing posts until an admin picks a channel.
-Reminders can be late by up to five minutes: that is the shortest interval a schedule may have.
+A reminder armed from a channel fires at its own time; the five-minute schedule only covers old ones with no channel.
 
 ## The clock
 
