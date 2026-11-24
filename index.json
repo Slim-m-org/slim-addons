@@ -136,8 +136,8 @@
     {
       "id": "reminder",
       "name": "Reminder",
-      "version": "0.1.1",
-      "summary": "Say when and what with /remind 30m take the bread out, and the channel is told when it is time."
+      "version": "0.2.0",
+      "summary": "Say when and what with /remind 30m take the bread out, and the channel you set it in is told when it is time."
     },
     {
       "id": "weather",
@@ -148,7 +148,7 @@
     {
       "id": "xp",
       "name": "XP and levels",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "summary": "Members earn XP for time in voice calls and show a level bar on their profile."
     },
     {
@@ -172,7 +172,7 @@
     {
       "id": "undergrowth",
       "name": "Undergrowth",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "summary": "A fungal turf war living under your space: messages fall as leaves, reactions bring rain, calls bring warmth, and up to six colonies grow, fight and fruit mushrooms that sing."
     },
     {
