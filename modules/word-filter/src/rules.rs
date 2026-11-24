@@ -86,14 +86,19 @@ impl Rules {
     }
 
     pub fn matches(&self, text: &str) -> bool {
-        !self.words.spans(text).is_empty() || self.patterns.as_ref().is_some_and(|p| p.is_match(text.as_bytes()))
+        let scan = self.words.scan(text);
+        scan.gave_up_at.is_some() || !scan.spans.is_empty() || self.patterns.as_ref().is_some_and(|p| p.is_match(text.as_bytes()))
     }
 
     /// Every matched span replaced with one asterisk per character, so the length reads the same.
     pub fn mask(&self, text: &str) -> String {
         let mut hidden = vec![false; text.len()];
-        for (start, end) in self.words.spans(text) {
+        let scan = self.words.scan(text);
+        for (start, end) in scan.spans {
             hidden[start..end].iter_mut().for_each(|h| *h = true);
+        }
+        if let Some(from) = scan.gave_up_at {
+            hidden[from..].iter_mut().for_each(|h| *h = true);
         }
         let mut found = self.patterns.iter().flat_map(|p| p.find_iter(text.as_bytes()));
         for m in found.by_ref().take(MAX_MASKED_MATCHES) {
@@ -231,6 +236,23 @@ mod tests {
         let r = rules(json!({"patterns": "(a+)+$"}));
         let long = format!("{}b", "a".repeat(4000));
         assert!(!r.matches(&long));
+    }
+
+    #[test]
+    fn a_message_too_costly_to_scan_counts_as_a_match_and_is_masked_from_where_it_gave_up() {
+        let words: Vec<String> = (0..100).map(|i| format!("free w{i}")).collect();
+        let r = rules(json!({"words": words.join(",")}));
+        let text = "free ".repeat(20_000);
+        assert!(r.matches(&text));
+        assert!(r.mask(&text).trim_end().ends_with("****"));
+    }
+
+    #[test]
+    fn patterns_fold_ascii_case_only() {
+        let r = rules(json!({"patterns": "école"}));
+        assert!(r.matches("une école"));
+        assert!(!r.matches("une ÉCOLE"));
+        assert!(rules(json!({"words": "école"})).matches("une ÉCOLE"));
     }
 
     #[test]
