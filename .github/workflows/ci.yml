@@ -43,27 +43,31 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts -p 'test_*.py'
           (cd tools/run-module && cargo test --locked)
+      # A push to main is held to the same immutability rules as a pull request, against what the push replaced.
+      - name: Pick the base to compare against
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            base="origin/$BASE_REF"
+          elif [ -z "${BEFORE//0/}" ]; then
+            base=$(git rev-parse HEAD^)
+          else
+            base="$BEFORE"
+          fi
+          echo "ref=$base" >> "$GITHUB_OUTPUT"
       # Rebuilds each module's wasm with scripts/build-wasm.sh and compares it to the pinned one.
       - name: Check the pinned wasm was built from this source
         env:
-          EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          args=()
-          if [ "$EVENT" = "pull_request" ]; then
-            args=(--base "origin/$BASE_REF")
-          fi
-          python3 scripts/check-wasm-builds.py "${args[@]}"
+          BASE: ${{ steps.base.outputs.ref }}
+        run: python3 scripts/check-wasm-builds.py --base "$BASE"
       - name: Check the catalogue
         env:
-          EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          args=()
-          if [ "$EVENT" = "pull_request" ]; then
-            args=(--base "origin/$BASE_REF")
-          fi
-          python3 scripts/check-catalogue.py "${args[@]}"
+          BASE: ${{ steps.base.outputs.ref }}
+        run: python3 scripts/check-catalogue.py --base "$BASE"
       - name: Check every app's scenes
         run: |
           (cd tools/run-module && cargo build --locked --release)
@@ -72,6 +76,15 @@ jobs:
         run: python3 scripts/check-command-modules.py target/release/run-module
       - name: Play every game through its script
         run: python3 scripts/play-modules.py target/release/run-module
+
+  engine-version:
+    # Reads slim-m's Cargo.lock from its main, so it needs the network.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check run-module runs the wasmi version the server runs
+        run: python3 scripts/check-wasmi-version.py
 
   connector-sources:
     # Reads each connector's source manifest from its repo's main, so it needs the network and a merged source.

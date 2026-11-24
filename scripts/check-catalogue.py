@@ -22,6 +22,20 @@ def fail(module, message):
     problems.append(f"{module}: {message}")
 
 
+SEGMENT_CHARS = re.compile(r"[A-Za-z0-9._+@-]+")
+VERSION_CHARS = re.compile(r"[0-9A-Za-z.+-]+")
+COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
+
+
+def is_plain_segment(value):
+    """One path segment the way slim's is_plain_relative_path allows it: no empty, dot or dot-dot, only name characters."""
+    return isinstance(value, str) and value not in (".", "..") and SEGMENT_CHARS.fullmatch(value) is not None
+
+
+def is_plain_relative_path(path):
+    return isinstance(path, str) and all(is_plain_segment(part) for part in path.split("/"))
+
+
 def check_changelog(mid, m):
     """Release notes, held to the limits slim-m's server enforces."""
     changelog = m.get("changelog", [])
@@ -104,8 +118,12 @@ for mid in sorted(on_disk & listed.keys()):
         if m.get(key) != row.get(key):
             fail(mid, f"index.json {key} differs from the manifest")
     ref = row.get("ref")
-    if ref is not None and not (isinstance(ref, str) and re.fullmatch(r"[0-9a-f]{40}|[A-Za-z0-9][A-Za-z0-9._-]{0,63}", ref) and ".." not in ref):
-        fail(mid, f"index.json ref {ref!r} is not a commit sha or a tag name")
+    if ref is not None and not (isinstance(ref, str) and COMMIT_SHA.fullmatch(ref)):
+        fail(mid, f"index.json ref {ref!r} is not a 40-character commit sha; a tag or branch can move after review")
+    version = m.get("version")
+    if not (is_plain_segment(version) and VERSION_CHARS.fullmatch(version)):
+        fail(mid, f"version {version!r} is not a plain path segment (letters, digits and . + -), so the artifact path would leave the module's directory")
+        continue
     if m["id"] != mid:
         fail(mid, "manifest id does not match its directory")
     if is_connector(m):
@@ -113,6 +131,9 @@ for mid in sorted(on_disk & listed.keys()):
     elif "artifact" not in m:
         fail(mid, "has no artifact; only a \"provider\": \"connector\" manifest may leave it out")
     else:
+        if not is_plain_relative_path(m["artifact"]["path"]):
+            fail(mid, f"artifact path {m['artifact']['path']!r} is not made of plain path segments")
+            continue
         wasm = root / m["artifact"]["path"]
         expected_path = f"modules/{mid}/{m['version']}/module.wasm"
         if m["artifact"]["path"] != expected_path:
